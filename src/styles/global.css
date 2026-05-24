@@ -326,6 +326,46 @@ button {
   transform: translateX(-50%) translateY(4px);
 }
 
+.about-modal {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(3, 10, 12, 0.42);
+  pointer-events: auto;
+}
+
+.about-modal[hidden] {
+  display: none;
+}
+
+.about-dialog {
+  width: min(420px, 100%);
+  padding: 18px;
+  border: 1px solid rgba(225, 255, 245, 0.16);
+  border-radius: 8px;
+  background: rgba(4, 12, 15, 0.82);
+  backdrop-filter: blur(22px);
+}
+
+.about-dialog h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  font-weight: 630;
+}
+
+.about-dialog p {
+  margin: 10px 0;
+  color: rgba(234, 255, 248, 0.72);
+  line-height: 1.7;
+}
+
+.about-dialog .text-button {
+  width: 100%;
+  margin-top: 8px;
+}
+
 .unsupported {
   position: fixed;
   inset: 0;

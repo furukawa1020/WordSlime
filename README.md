@@ -1,6 +1,6 @@
 # WordSlime
 
-ことばが溶けて、勝手に生きものになる。
+## ことばが溶けて、勝手に生きものになる。
 
 WordSlime is a browser-based WebGPU toy that turns typed words into living particle slime.
 It does not analyze meaning, emotion, or mental state.

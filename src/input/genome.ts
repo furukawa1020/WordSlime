@@ -41,7 +41,7 @@ export function mapFeaturesToGenome(features: TextFeatures): SlimeGenome {
     viscosity:
       0.36 +
       softScript * 0.25 +
-      ellipsis * 0.32 +
+      ellipsis * 0.58 +
       heavyScript * 0.12 -
       latin * 0.12 -
       exclamation * 0.08,

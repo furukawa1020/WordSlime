@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.vite/
+
+*.local
+*.log
+
+wordslime_*.png
+wordslime_*.webm

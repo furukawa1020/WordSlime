@@ -82,6 +82,9 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   createParticleRenderer(canvas, state.settings)
     .then((particleRenderer) => {
       renderer = particleRenderer;
+      for (const seed of state.seeds) {
+        renderer.addSeed(seed);
+      }
       renderer.start();
     })
     .catch((error: unknown) => {

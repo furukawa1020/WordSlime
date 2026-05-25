@@ -39,6 +39,18 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const aboutClose = query<HTMLButtonElement>(root, ".about-close");
   const audio = new AudioEngine();
   let renderer: ParticleRenderer | undefined;
+  const setAudioMode = async (mode: AudioMode) => {
+    state.settings.audioMode = mode;
+    updatePressed(panel, "data-audio", mode);
+    updateHud(hud, state);
+    const available = await audio.setMode(mode);
+
+    if (available && mode !== "off") {
+      showToast(toast, "音が生えました。", 1200);
+    } else if (!available) {
+      showToast(toast, "Audio unavailable", 1600);
+    }
+  };
 
   resizeCanvas(canvas);
   const resizeObserver = new ResizeObserver(() => {
@@ -57,14 +69,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       updateHud(hud, state);
       showToast(toast, modeLabels[state.settings.mode], 900);
     },
-    async (mode) => {
-      const available = await audio.setMode(mode);
-      if (available && mode !== "off") {
-        showToast(toast, "音が生えました。", 1200);
-      } else if (!available) {
-        showToast(toast, "Audio unavailable", 1600);
-      }
-    },
+    setAudioMode,
   );
   const actionCleanup = attachActions({
     canvas,
@@ -77,11 +82,29 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     getRenderer: () => renderer,
     onStateChange: () => updateHud(hud, state),
     onToast: (message, duration) => showToast(toast, message, duration),
+    onAudioToggle: () => {
+      void setAudioMode(state.settings.audioMode === "off" ? "soft" : "off");
+    },
+    onPauseToggle: () => {
+      state.isPaused = !state.isPaused;
+      if (state.isPaused) {
+        renderer?.stop();
+        showToast(toast, "Paused", 900);
+      } else {
+        renderer?.start();
+        showToast(toast, "Resumed", 900);
+      }
+      updateHud(hud, state);
+    },
   });
 
   createParticleRenderer(canvas, state.settings)
     .then((particleRenderer) => {
       renderer = particleRenderer;
+      renderer.onDeviceLost((info) => {
+        console.warn("GPU device lost", info);
+        showToast(toast, "GPU device lost. Reloading may help.", 2600);
+      });
       for (const seed of state.seeds) {
         renderer.addSeed(seed);
       }
@@ -232,6 +255,8 @@ type ActionElements = {
   getRenderer: () => ParticleRenderer | undefined;
   onStateChange: () => void;
   onToast: (message: string, duration: number) => void;
+  onAudioToggle: () => void;
+  onPauseToggle: () => void;
 };
 
 function attachActions(elements: ActionElements): () => void {
@@ -266,17 +291,51 @@ function attachActions(elements: ActionElements): () => void {
     elements.aboutModal.hidden = true;
   };
 
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (isEditableTarget(event.target)) {
+      return;
+    }
+
+    if (event.key === "s" || event.key === "S") {
+      event.preventDefault();
+      void handleSave();
+    } else if (event.key === "r" || event.key === "R") {
+      event.preventDefault();
+      handleReset();
+    } else if (event.key === "m" || event.key === "M") {
+      event.preventDefault();
+      elements.onAudioToggle();
+    } else if (event.key === " ") {
+      event.preventDefault();
+      elements.onPauseToggle();
+    }
+  };
+
   elements.saveButton.addEventListener("click", handleSave);
   elements.resetButton.addEventListener("click", handleReset);
   elements.aboutButton.addEventListener("click", handleAboutOpen);
   elements.aboutClose.addEventListener("click", handleAboutClose);
+  window.addEventListener("keydown", handleKeyDown);
 
   return () => {
     elements.saveButton.removeEventListener("click", handleSave);
     elements.resetButton.removeEventListener("click", handleReset);
     elements.aboutButton.removeEventListener("click", handleAboutOpen);
     elements.aboutClose.removeEventListener("click", handleAboutClose);
+    window.removeEventListener("keydown", handleKeyDown);
   };
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target.isContentEditable
+  );
 }
 
 function createWordSeed(
@@ -317,7 +376,7 @@ function updateHud(hud: HTMLElement, state: AppState): void {
     particles: ${state.totalParticles.toLocaleString()}<br />
     ${latest ? `last: ${escapeHtml(trimText(latest.text, 18))}<br />` : ""}
     ${state.queuedInputs > 0 ? `queued: ${state.queuedInputs}<br />` : ""}
-    ${latest ? `energy: ${latest.genome.energy.toFixed(2)}` : "waiting"}
+    ${state.isPaused ? "paused" : latest ? `energy: ${latest.genome.energy.toFixed(2)}` : "waiting"}
   `;
 }
 

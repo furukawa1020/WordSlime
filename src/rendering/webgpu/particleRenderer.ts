@@ -16,6 +16,7 @@ export type ParticleRenderer = {
   clear(): void;
   setPointer(pointer: PointerState): void;
   resize(): void;
+  onDeviceLost(callback: (info: GPUDeviceLostInfo) => void): void;
   start(): void;
   stop(): void;
 };
@@ -54,6 +55,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly renderBindGroup: GPUBindGroup;
   private readonly params = new Float32Array(PARAM_FLOATS);
   private pointer: PointerState = { x: 0, y: 0, active: false, down: false };
+  private deviceLostCallback: ((info: GPUDeviceLostInfo) => void) | undefined;
   private activeCount = 0;
   private nextIndex = 0;
   private running = false;
@@ -142,6 +144,11 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         { binding: 1, resource: { buffer: this.paramsBuffer } },
       ],
     });
+
+    void gpu.lost.then((info) => {
+      this.stop();
+      this.deviceLostCallback?.(info);
+    });
   }
 
   addSeed(seed: WordSeed): void {
@@ -216,6 +223,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
 
   resize(): void {
     configureCanvas(this.gpu.context, this.gpu.device, this.gpu.format);
+  }
+
+  onDeviceLost(callback: (info: GPUDeviceLostInfo) => void): void {
+    this.deviceLostCallback = callback;
   }
 
   start(): void {

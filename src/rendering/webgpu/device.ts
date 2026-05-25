@@ -3,6 +3,7 @@ export type WebGpuDevice = {
   device: GPUDevice;
   context: GPUCanvasContext;
   format: GPUTextureFormat;
+  lost: Promise<GPUDeviceLostInfo>;
 };
 
 export async function createWebGpuDevice(
@@ -35,6 +36,7 @@ export async function createWebGpuDevice(
     device,
     context,
     format,
+    lost: device.lost,
   };
 }
 

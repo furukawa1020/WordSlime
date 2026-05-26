@@ -470,7 +470,7 @@ button {
   }
 
   .toast {
-    top: 106px;
+    top: 148px;
     max-width: calc(100vw - 32px);
     white-space: normal;
     text-align: center;

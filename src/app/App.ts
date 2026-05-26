@@ -10,6 +10,7 @@ import {
 } from "../rendering/webgpu/particleRenderer";
 import { createInitialState, type AppState, type WordSeed } from "./state";
 import {
+  backgroundLabels,
   modeLabels,
   qualityLabels,
   qualityParticleMultipliers,
@@ -23,6 +24,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const state = createInitialState();
   root.innerHTML = renderApp();
 
+  const shell = query<HTMLElement>(root, ".wordslime-shell");
   const canvas = query<HTMLCanvasElement>(root, ".wordslime-canvas");
   const form = query<HTMLFormElement>(root, ".summon-form");
   const textarea = query<HTMLTextAreaElement>(root, ".summon-input");
@@ -39,6 +41,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const aboutClose = query<HTMLButtonElement>(root, ".about-close");
   const audio = new AudioEngine();
   let renderer: ParticleRenderer | undefined;
+  applyBackground(shell, state.settings.background);
   const setAudioMode = async (mode: AudioMode) => {
     state.settings.audioMode = mode;
     updatePressed(panel, "data-audio", mode);
@@ -69,6 +72,12 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       updateHud(hud, state);
       showToast(toast, modeLabels[state.settings.mode], 900);
     },
+    (background) => {
+      state.settings.background = background;
+      applyBackground(shell, background);
+      updateHud(hud, state);
+      showToast(toast, backgroundLabels[background], 900);
+    },
     setAudioMode,
   );
   const actionCleanup = attachActions({
@@ -95,6 +104,12 @@ export function createApp(root: HTMLElement): WordSlimeApp {
         showToast(toast, "Resumed", 900);
       }
       updateHud(hud, state);
+    },
+    onModeSelect: (mode) => {
+      state.settings.mode = mode;
+      updatePressed(panel, "data-mode", mode);
+      updateHud(hud, state);
+      showToast(toast, modeLabels[mode], 900);
     },
   });
 
@@ -198,6 +213,15 @@ function renderApp(): string {
             </div>
           </div>
           <div class="setting-group">
+            <div class="setting-label">背景</div>
+            <div class="segmented" style="--count: 4">
+              <button type="button" data-background="dark" aria-pressed="false">Dark</button>
+              <button type="button" data-background="milk" aria-pressed="false">Milk</button>
+              <button type="button" data-background="deep-sea" aria-pressed="true">Sea</button>
+              <button type="button" data-background="paper" aria-pressed="false">Paper</button>
+            </div>
+          </div>
+          <div class="setting-group">
             <div class="setting-label">音</div>
             <div class="segmented" style="--count: 4">
               <button type="button" data-audio="off" aria-pressed="true">Off</button>
@@ -257,6 +281,7 @@ type ActionElements = {
   onToast: (message: string, duration: number) => void;
   onAudioToggle: () => void;
   onPauseToggle: () => void;
+  onModeSelect: (mode: "slime" | "swarm" | "smoke") => void;
 };
 
 function attachActions(elements: ActionElements): () => void {
@@ -308,6 +333,12 @@ function attachActions(elements: ActionElements): () => void {
     } else if (event.key === " ") {
       event.preventDefault();
       elements.onPauseToggle();
+    } else if (event.key === "1") {
+      elements.onModeSelect("slime");
+    } else if (event.key === "2") {
+      elements.onModeSelect("swarm");
+    } else if (event.key === "3") {
+      elements.onModeSelect("smoke");
     }
   };
 
@@ -403,11 +434,16 @@ function resizeCanvas(canvas: HTMLCanvasElement): void {
   canvas.height = Math.max(1, Math.floor(rect.height * dpr));
 }
 
+function applyBackground(shell: HTMLElement, background: string): void {
+  shell.dataset.background = background;
+}
+
 function attachSettingsPanel(
   panel: HTMLElement,
   toggle: HTMLButtonElement,
   state: AppState,
   onChange: () => void,
+  onBackgroundChange: (background: AppState["settings"]["background"]) => void,
   onAudioModeChange: (mode: AudioMode) => Promise<void>,
 ): () => void {
   const handleToggle = () => {
@@ -425,6 +461,7 @@ function attachSettingsPanel(
 
     const mode = button.getAttribute("data-mode");
     const quality = button.getAttribute("data-quality");
+    const background = button.getAttribute("data-background");
     const audio = button.getAttribute("data-audio");
 
     if (mode === "slime" || mode === "swarm" || mode === "smoke") {
@@ -442,6 +479,17 @@ function attachSettingsPanel(
       state.settings.particleQuality = quality;
       updatePressed(panel, "data-quality", quality);
       onChange();
+    }
+
+    if (
+      background === "dark" ||
+      background === "milk" ||
+      background === "deep-sea" ||
+      background === "paper"
+    ) {
+      state.settings.background = background;
+      updatePressed(panel, "data-background", background);
+      onBackgroundChange(background);
     }
 
     if (

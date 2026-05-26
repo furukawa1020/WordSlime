@@ -267,6 +267,8 @@ button {
   right: 16px;
   top: 62px;
   width: min(292px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 180px));
+  overflow: auto;
   padding: 14px;
   border: 1px solid rgba(220, 255, 244, 0.14);
   border-radius: 8px;

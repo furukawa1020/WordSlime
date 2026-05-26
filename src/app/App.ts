@@ -4,6 +4,7 @@ import { saveCanvasPng } from "../export/screenshot";
 import { mapFeaturesToGenome, particleCountForFeatures } from "../input/genome";
 import { attachTextInput } from "../input/textInput";
 import { extractTextFeatures } from "../input/textFeatures";
+import { SedimentLayer } from "../rendering/sedimentLayer";
 import {
   createParticleRenderer,
   type ParticleRenderer,
@@ -25,6 +26,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   root.innerHTML = renderApp();
 
   const shell = query<HTMLElement>(root, ".wordslime-shell");
+  const sedimentCanvas = query<HTMLCanvasElement>(root, ".sediment-canvas");
   const canvas = query<HTMLCanvasElement>(root, ".wordslime-canvas");
   const form = query<HTMLFormElement>(root, ".summon-form");
   const textarea = query<HTMLTextAreaElement>(root, ".summon-input");
@@ -40,6 +42,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const aboutModal = query<HTMLElement>(root, ".about-modal");
   const aboutClose = query<HTMLButtonElement>(root, ".about-close");
   const audio = new AudioEngine();
+  const sediment = new SedimentLayer(sedimentCanvas);
   let renderer: ParticleRenderer | undefined;
   applyBackground(shell, state.settings.background);
   const setAudioMode = async (mode: AudioMode) => {
@@ -58,6 +61,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   resizeCanvas(canvas);
   const resizeObserver = new ResizeObserver(() => {
     resizeCanvas(canvas);
+    sediment.resize();
     renderer?.resize();
   });
   resizeObserver.observe(canvas);
@@ -89,6 +93,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     aboutModal,
     state,
     getRenderer: () => renderer,
+    getSediment: () => sediment,
     onStateChange: () => updateHud(hud, state),
     onToast: (message, duration) => showToast(toast, message, duration),
     onAudioToggle: () => {
@@ -139,6 +144,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       state.totalParticles += seed.particleCount;
       intro.dataset.hidden = "true";
       showSpawnText(spawnText, text);
+      sediment.addSeed(seed);
       renderer?.addSeed(seed);
       audio.playSpawn(seed);
       audio.updateHum(state);
@@ -181,6 +187,7 @@ function renderApp(): string {
   return `
     <main class="wordslime-shell">
       <canvas class="wordslime-canvas" aria-label="WordSlime water tank"></canvas>
+      <canvas class="sediment-canvas" aria-hidden="true"></canvas>
       <div class="ui-layer">
         <section class="intro">
           <h1>WordSlime</h1>
@@ -197,10 +204,12 @@ function renderApp(): string {
           <h2>Settings</h2>
           <div class="setting-group">
             <div class="setting-label">挙動</div>
-            <div class="segmented" style="--count: 3">
+            <div class="segmented" style="--count: 5">
               <button type="button" data-mode="slime" aria-pressed="true">Slime</button>
               <button type="button" data-mode="swarm" aria-pressed="false">Swarm</button>
               <button type="button" data-mode="smoke" aria-pressed="false">Smoke</button>
+              <button type="button" data-mode="fungus" aria-pressed="false">Fungus</button>
+              <button type="button" data-mode="glitch" aria-pressed="false">Glitch</button>
             </div>
           </div>
           <div class="setting-group">
@@ -277,11 +286,12 @@ type ActionElements = {
   aboutModal: HTMLElement;
   state: AppState;
   getRenderer: () => ParticleRenderer | undefined;
+  getSediment: () => SedimentLayer;
   onStateChange: () => void;
   onToast: (message: string, duration: number) => void;
   onAudioToggle: () => void;
   onPauseToggle: () => void;
-  onModeSelect: (mode: "slime" | "swarm" | "smoke") => void;
+  onModeSelect: (mode: AppState["settings"]["mode"]) => void;
 };
 
 function attachActions(elements: ActionElements): () => void {
@@ -304,6 +314,7 @@ function attachActions(elements: ActionElements): () => void {
     elements.state.totalParticles = 0;
     elements.state.queuedInputs = 0;
     elements.getRenderer()?.clear();
+    elements.getSediment().clear();
     elements.onStateChange();
     elements.onToast("水槽を空にしました。", 1100);
   };
@@ -339,6 +350,10 @@ function attachActions(elements: ActionElements): () => void {
       elements.onModeSelect("swarm");
     } else if (event.key === "3") {
       elements.onModeSelect("smoke");
+    } else if (event.key === "4") {
+      elements.onModeSelect("fungus");
+    } else if (event.key === "5") {
+      elements.onModeSelect("glitch");
     }
   };
 
@@ -464,7 +479,13 @@ function attachSettingsPanel(
     const background = button.getAttribute("data-background");
     const audio = button.getAttribute("data-audio");
 
-    if (mode === "slime" || mode === "swarm" || mode === "smoke") {
+    if (
+      mode === "slime" ||
+      mode === "swarm" ||
+      mode === "smoke" ||
+      mode === "fungus" ||
+      mode === "glitch"
+    ) {
       state.settings.mode = mode;
       updatePressed(panel, "data-mode", mode);
       onChange();

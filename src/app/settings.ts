@@ -40,3 +40,10 @@ export const qualityParticleMultipliers: Record<ParticleQuality, number> = {
   high: 1.8,
   insane: 3,
 };
+
+export const backgroundLabels: Record<BackgroundMode, string> = {
+  dark: "Dark",
+  milk: "Milk",
+  "deep-sea": "Deep Sea",
+  paper: "Paper",
+};

@@ -30,8 +30,8 @@ const modeValues: Record<SimulationMode, number> = {
   slime: 0,
   swarm: 1,
   smoke: 2,
-  fungus: 0,
-  glitch: 1,
+  fungus: 3,
+  glitch: 4,
 };
 
 export async function createParticleRenderer(

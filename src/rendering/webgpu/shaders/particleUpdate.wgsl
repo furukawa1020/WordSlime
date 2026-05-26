@@ -74,9 +74,24 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     flow += swirl * (34.0 + particle.energy * 36.0);
     flow += normalize(to_center) * 12.0;
     particle.velocity *= 0.996;
-  } else {
+  } else if (mode < 2.5) {
     flow += vec2f(22.0, -18.0) * (0.45 + particle.energy);
     particle.velocity *= 0.982;
+  } else if (mode < 3.5) {
+    let branch = vec2f(
+      sin(time * 0.18 + particle.position.x * 0.018),
+      cos(time * 0.16 + particle.position.y * 0.018)
+    );
+    flow += normalize(to_center) * (3.0 + particle.energy * 7.0);
+    flow += branch * (18.0 + particle.energy * 16.0);
+    particle.velocity *= 0.972;
+  } else {
+    let glitch = vec2f(
+      sin(time * 23.0 + f32(index) * 0.37),
+      cos(time * 19.0 + f32(index) * 0.41)
+    );
+    flow += glitch * (130.0 + particle.energy * 160.0);
+    particle.velocity *= 0.94;
   }
 
   let pointer_active = params.pointer.z;

@@ -90,6 +90,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   );
   const actionCleanup = attachActions({
     canvas,
+    sedimentCanvas,
     saveButton,
     recordButton,
     jsonButton,
@@ -287,6 +288,7 @@ function renderApp(): string {
 
 type ActionElements = {
   canvas: HTMLCanvasElement;
+  sedimentCanvas: HTMLCanvasElement;
   saveButton: HTMLButtonElement;
   recordButton: HTMLButtonElement;
   jsonButton: HTMLButtonElement;
@@ -309,7 +311,7 @@ function attachActions(elements: ActionElements): () => void {
 
   const handleSave = async () => {
     try {
-      await saveCanvasPng(elements.canvas);
+      await saveCanvasPng([elements.canvas, elements.sedimentCanvas]);
       elements.onToast("標本を保存しました。", 1400);
     } catch (error) {
       console.error(error);
@@ -324,7 +326,7 @@ function attachActions(elements: ActionElements): () => void {
     }
 
     try {
-      recording = startCanvasRecording(elements.canvas);
+      recording = startCanvasRecording([elements.canvas, elements.sedimentCanvas]);
       elements.recordButton.textContent = "Stop";
       elements.onToast("REC — slime is being captured", 1400);
       void recording.done

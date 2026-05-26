@@ -5,12 +5,37 @@ export type ActiveRecording = {
 
 const MAX_RECORDING_MS = 30_000;
 
-export function startCanvasRecording(canvas: HTMLCanvasElement): ActiveRecording {
-  if (!("captureStream" in canvas) || typeof MediaRecorder === "undefined") {
+export function startCanvasRecording(canvases: HTMLCanvasElement[]): ActiveRecording {
+  const [base] = canvases;
+
+  if (!base || !("captureStream" in base) || typeof MediaRecorder === "undefined") {
     throw new Error("Recording is unavailable in this browser");
   }
 
-  const stream = canvas.captureStream(60);
+  const captureCanvas = document.createElement("canvas");
+  const captureContext = captureCanvas.getContext("2d");
+
+  if (!captureContext) {
+    throw new Error("Recording is unavailable in this browser");
+  }
+
+  captureCanvas.width = base.width;
+  captureCanvas.height = base.height;
+
+  let frameHandle = 0;
+  const paint = () => {
+    captureContext.clearRect(0, 0, captureCanvas.width, captureCanvas.height);
+
+    for (const canvas of canvases) {
+      captureContext.drawImage(canvas, 0, 0, captureCanvas.width, captureCanvas.height);
+    }
+
+    frameHandle = requestAnimationFrame(paint);
+  };
+
+  paint();
+
+  const stream = captureCanvas.captureStream(60);
   const mimeType = selectMimeType();
   const recorder = new MediaRecorder(
     stream,
@@ -63,6 +88,7 @@ export function startCanvasRecording(canvas: HTMLCanvasElement): ActiveRecording
   };
 
   function cleanup(): void {
+    cancelAnimationFrame(frameHandle);
     window.clearTimeout(timeout);
     stream.getTracks().forEach((track) => track.stop());
   }

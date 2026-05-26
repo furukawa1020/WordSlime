@@ -1,4 +1,5 @@
-export async function saveCanvasPng(canvas: HTMLCanvasElement): Promise<string> {
+export async function saveCanvasPng(canvases: HTMLCanvasElement[]): Promise<string> {
+  const canvas = composeCanvases(canvases);
   const blob = await canvasToBlob(canvas);
   const filename = `wordslime_${formatTimestamp(new Date())}.png`;
   const url = URL.createObjectURL(blob);
@@ -10,6 +11,25 @@ export async function saveCanvasPng(canvas: HTMLCanvasElement): Promise<string> 
   URL.revokeObjectURL(url);
 
   return filename;
+}
+
+function composeCanvases(canvases: HTMLCanvasElement[]): HTMLCanvasElement {
+  const [base] = canvases;
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  if (!base || !context) {
+    throw new Error("PNG export failed");
+  }
+
+  canvas.width = base.width;
+  canvas.height = base.height;
+
+  for (const source of canvases) {
+    context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  }
+
+  return canvas;
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {

@@ -41,6 +41,13 @@ export const qualityParticleMultipliers: Record<ParticleQuality, number> = {
   insane: 3,
 };
 
+export const qualityParticleBudgets: Record<ParticleQuality, number> = {
+  low: 2000,
+  medium: 6000,
+  high: 10000,
+  insane: 10000,
+};
+
 export const backgroundLabels: Record<BackgroundMode, string> = {
   dark: "Dark",
   milk: "Milk",

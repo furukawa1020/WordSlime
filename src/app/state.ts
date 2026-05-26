@@ -24,6 +24,10 @@ export type AppState = {
   settings: AppSettings;
   queuedInputs: number;
   totalParticles: number;
+  performance: {
+    fps: number;
+    degraded: boolean;
+  };
 };
 
 export function createInitialState(): AppState {
@@ -33,5 +37,9 @@ export function createInitialState(): AppState {
     settings: defaultSettings,
     queuedInputs: 0,
     totalParticles: 0,
+    performance: {
+      fps: 0,
+      degraded: false,
+    },
   };
 }

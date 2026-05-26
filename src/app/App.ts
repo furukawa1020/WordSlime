@@ -16,6 +16,7 @@ import {
   backgroundLabels,
   modeLabels,
   qualityLabels,
+  qualityParticleBudgets,
   qualityParticleMultipliers,
 } from "./settings";
 
@@ -77,6 +78,9 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     settingsToggle,
     state,
     () => {
+      renderer?.setParticleBudget(
+        qualityParticleBudgets[state.settings.particleQuality],
+      );
       updateHud(hud, state);
       showToast(toast, modeLabels[state.settings.mode], 900);
     },
@@ -128,6 +132,9 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   createParticleRenderer(canvas, state.settings)
     .then((particleRenderer) => {
       renderer = particleRenderer;
+      renderer.setParticleBudget(
+        qualityParticleBudgets[state.settings.particleQuality],
+      );
       renderer.onDeviceLost((info) => {
         console.warn("GPU device lost", info);
         showToast(toast, "GPU device lost. Reloading may help.", 2600);
@@ -165,6 +172,13 @@ export function createApp(root: HTMLElement): WordSlimeApp {
 
   updateHud(hud, state);
   showToast(toast, "ことばを打つ。溶けるのを待つ。", 1800);
+  const performanceCleanup = startPerformanceMonitor({
+    state,
+    panel,
+    getRenderer: () => renderer,
+    onHudUpdate: () => updateHud(hud, state),
+    onToast: (message, duration) => showToast(toast, message, duration),
+  });
 
   return {
     destroy() {
@@ -172,6 +186,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       pointerCleanup();
       settingsCleanup();
       actionCleanup();
+      performanceCleanup();
       renderer?.stop();
       audio.destroy();
       resizeObserver.disconnect();
@@ -476,8 +491,74 @@ function updateHud(hud: HTMLElement, state: AppState): void {
     particles: ${state.totalParticles.toLocaleString()}<br />
     ${latest ? `last: ${escapeHtml(trimText(latest.text, 18))}<br />` : ""}
     ${state.queuedInputs > 0 ? `queued: ${state.queuedInputs}<br />` : ""}
+    fps: ${state.performance.fps > 0 ? Math.round(state.performance.fps) : "-"}<br />
     ${state.isPaused ? "paused" : latest ? `energy: ${latest.genome.energy.toFixed(2)}` : "waiting"}
   `;
+}
+
+type PerformanceMonitorOptions = {
+  state: AppState;
+  panel: HTMLElement;
+  getRenderer: () => ParticleRenderer | undefined;
+  onHudUpdate: () => void;
+  onToast: (message: string, duration: number) => void;
+};
+
+function startPerformanceMonitor(options: PerformanceMonitorOptions): () => void {
+  let frameHandle = 0;
+  let last = performance.now();
+  let frames = 0;
+  let lowFpsSamples = 0;
+  const qualityOrder = ["low", "medium", "high", "insane"] as const;
+
+  const tick = (now: number) => {
+    frames += 1;
+
+    if (now - last >= 1000) {
+      const fps = (frames * 1000) / (now - last);
+      options.state.performance.fps = fps;
+      frames = 0;
+      last = now;
+
+      if (!options.state.isPaused && fps > 0 && fps < 38) {
+        lowFpsSamples += 1;
+      } else {
+        lowFpsSamples = 0;
+      }
+
+      if (lowFpsSamples >= 3) {
+        lowFpsSamples = 0;
+        degradeQuality(options, qualityOrder);
+      }
+
+      options.onHudUpdate();
+    }
+
+    frameHandle = requestAnimationFrame(tick);
+  };
+
+  frameHandle = requestAnimationFrame(tick);
+
+  return () => cancelAnimationFrame(frameHandle);
+}
+
+function degradeQuality(
+  options: PerformanceMonitorOptions,
+  qualityOrder: readonly AppState["settings"]["particleQuality"][],
+): void {
+  const current = options.state.settings.particleQuality;
+  const index = qualityOrder.indexOf(current);
+
+  if (index <= 0) {
+    return;
+  }
+
+  const next = qualityOrder[index - 1];
+  options.state.settings.particleQuality = next;
+  options.state.performance.degraded = true;
+  updatePressed(options.panel, "data-quality", next);
+  options.getRenderer()?.setParticleBudget(qualityParticleBudgets[next]);
+  options.onToast(`Particle quality lowered: ${qualityLabels[next]}`, 1700);
 }
 
 function showSpawnText(element: HTMLElement, text: string): void {

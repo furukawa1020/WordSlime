@@ -14,6 +14,7 @@ type PointerState = {
 export type ParticleRenderer = {
   addSeed(seed: WordSeed): void;
   clear(): void;
+  setParticleBudget(maxParticles: number): void;
   setPointer(pointer: PointerState): void;
   resize(): void;
   onDeviceLost(callback: (info: GPUDeviceLostInfo) => void): void;
@@ -57,6 +58,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private pointer: PointerState = { x: 0, y: 0, active: false, down: false };
   private deviceLostCallback: ((info: GPUDeviceLostInfo) => void) | undefined;
   private activeCount = 0;
+  private activeBudget = this.maxParticles;
   private nextIndex = 0;
   private running = false;
   private frameHandle = 0;
@@ -208,6 +210,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.particles.fill(0);
   }
 
+  setParticleBudget(maxParticles: number): void {
+    this.activeBudget = Math.max(256, Math.min(this.maxParticles, Math.floor(maxParticles)));
+  }
+
   setPointer(pointer: PointerState): void {
     const rect = this.canvas.getBoundingClientRect();
     const scaleX = this.canvas.width / Math.max(rect.width, 1);
@@ -262,14 +268,16 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       label: "particle frame encoder",
     });
 
-    if (this.activeCount > 0) {
+    const renderCount = this.renderCount();
+
+    if (renderCount > 0) {
       const computePass = encoder.beginComputePass({
         label: "particle update pass",
       });
       computePass.setPipeline(this.computePipeline);
       computePass.setBindGroup(0, this.computeBindGroup);
       computePass.dispatchWorkgroups(
-        Math.ceil(this.activeCount / WORKGROUP_SIZE),
+        Math.ceil(renderCount / WORKGROUP_SIZE),
       );
       computePass.end();
     }
@@ -287,10 +295,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       ],
     });
 
-    if (this.activeCount > 0) {
+    if (renderCount > 0) {
       renderPass.setPipeline(this.renderPipeline);
       renderPass.setBindGroup(0, this.renderBindGroup);
-      renderPass.draw(this.activeCount * 6);
+      renderPass.draw(renderCount * 6);
     }
 
     renderPass.end();
@@ -308,7 +316,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.params[7] = this.pointer.down ? 1 : 0;
     this.params[8] = modeValues[this.settings.mode];
     this.params[9] = this.settings.reduceMotion ? 1 : 0;
-    this.params[10] = this.activeCount;
+    this.params[10] = this.renderCount();
     this.params[11] = 0;
     this.params[12] = 0;
     this.params[13] = 0;
@@ -316,6 +324,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.params[15] = 0;
 
     this.gpu.device.queue.writeBuffer(this.paramsBuffer, 0, this.params);
+  }
+
+  private renderCount(): number {
+    return Math.min(this.activeCount, this.activeBudget);
   }
 }
 

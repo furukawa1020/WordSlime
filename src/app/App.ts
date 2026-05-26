@@ -1,5 +1,7 @@
 import { AudioEngine } from "../audio/audioEngine";
 import type { AudioMode } from "./settings";
+import { startCanvasRecording, type ActiveRecording } from "../export/recorder";
+import { saveWordSlimeJson } from "../export/saveJson";
 import { saveCanvasPng } from "../export/screenshot";
 import { mapFeaturesToGenome, particleCountForFeatures } from "../input/genome";
 import { attachTextInput } from "../input/textInput";
@@ -37,6 +39,8 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const panel = query<HTMLElement>(root, ".panel");
   const settingsToggle = query<HTMLButtonElement>(root, ".settings-toggle");
   const saveButton = query<HTMLButtonElement>(root, ".save-button");
+  const recordButton = query<HTMLButtonElement>(root, ".record-button");
+  const jsonButton = query<HTMLButtonElement>(root, ".json-button");
   const resetButton = query<HTMLButtonElement>(root, ".reset-button");
   const aboutButton = query<HTMLButtonElement>(root, ".about-button");
   const aboutModal = query<HTMLElement>(root, ".about-modal");
@@ -87,6 +91,8 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const actionCleanup = attachActions({
     canvas,
     saveButton,
+    recordButton,
+    jsonButton,
     resetButton,
     aboutButton,
     aboutClose,
@@ -240,6 +246,8 @@ function renderApp(): string {
             </div>
           </div>
           <div class="panel-actions">
+            <button class="text-button record-button" type="button">WebM</button>
+            <button class="text-button json-button" type="button">JSON</button>
             <button class="text-button reset-button" type="button">Reset</button>
             <button class="text-button about-button" type="button">About</button>
           </div>
@@ -280,6 +288,8 @@ function renderApp(): string {
 type ActionElements = {
   canvas: HTMLCanvasElement;
   saveButton: HTMLButtonElement;
+  recordButton: HTMLButtonElement;
+  jsonButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
   aboutButton: HTMLButtonElement;
   aboutClose: HTMLButtonElement;
@@ -295,6 +305,8 @@ type ActionElements = {
 };
 
 function attachActions(elements: ActionElements): () => void {
+  let recording: ActiveRecording | undefined;
+
   const handleSave = async () => {
     try {
       await saveCanvasPng(elements.canvas);
@@ -303,6 +315,42 @@ function attachActions(elements: ActionElements): () => void {
       console.error(error);
       elements.onToast("PNG保存に失敗しました。", 1600);
     }
+  };
+
+  const handleRecord = () => {
+    if (recording) {
+      recording.stop();
+      return;
+    }
+
+    try {
+      recording = startCanvasRecording(elements.canvas);
+      elements.recordButton.textContent = "Stop";
+      elements.onToast("REC — slime is being captured", 1400);
+      void recording.done
+        .then(() => {
+          elements.onToast("標本を保存しました。", 1400);
+        })
+        .catch((error: unknown) => {
+          console.error(error);
+          elements.onToast("録画に失敗しました。PNG保存を使ってください。", 1800);
+        })
+        .finally(() => {
+          recording = undefined;
+          elements.recordButton.textContent = "WebM";
+        });
+    } catch (error) {
+      console.error(error);
+      elements.onToast("録画に失敗しました。PNG保存を使ってください。", 1800);
+    }
+  };
+
+  const handleJsonSave = () => {
+    saveWordSlimeJson({
+      seeds: elements.state.seeds,
+      settings: elements.state.settings,
+    });
+    elements.onToast("標本を保存しました。", 1400);
   };
 
   const handleReset = () => {
@@ -358,6 +406,8 @@ function attachActions(elements: ActionElements): () => void {
   };
 
   elements.saveButton.addEventListener("click", handleSave);
+  elements.recordButton.addEventListener("click", handleRecord);
+  elements.jsonButton.addEventListener("click", handleJsonSave);
   elements.resetButton.addEventListener("click", handleReset);
   elements.aboutButton.addEventListener("click", handleAboutOpen);
   elements.aboutClose.addEventListener("click", handleAboutClose);
@@ -365,6 +415,8 @@ function attachActions(elements: ActionElements): () => void {
 
   return () => {
     elements.saveButton.removeEventListener("click", handleSave);
+    elements.recordButton.removeEventListener("click", handleRecord);
+    elements.jsonButton.removeEventListener("click", handleJsonSave);
     elements.resetButton.removeEventListener("click", handleReset);
     elements.aboutButton.removeEventListener("click", handleAboutOpen);
     elements.aboutClose.removeEventListener("click", handleAboutClose);

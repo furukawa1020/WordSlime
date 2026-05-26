@@ -1,0 +1,104 @@
+export type ActiveRecording = {
+  stop(): void;
+  done: Promise<string>;
+};
+
+const MAX_RECORDING_MS = 30_000;
+
+export function startCanvasRecording(canvas: HTMLCanvasElement): ActiveRecording {
+  if (!("captureStream" in canvas) || typeof MediaRecorder === "undefined") {
+    throw new Error("Recording is unavailable in this browser");
+  }
+
+  const stream = canvas.captureStream(60);
+  const mimeType = selectMimeType();
+  const recorder = new MediaRecorder(
+    stream,
+    mimeType ? { mimeType } : undefined,
+  );
+  const chunks: BlobPart[] = [];
+  let stopped = false;
+  let timeout = 0;
+
+  const done = new Promise<string>((resolve, reject) => {
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size > 0) {
+        chunks.push(event.data);
+      }
+    });
+
+    recorder.addEventListener("error", () => {
+      cleanup();
+      reject(new Error("Recording failed"));
+    });
+
+    recorder.addEventListener("stop", () => {
+      cleanup();
+      const blob = new Blob(chunks, {
+        type: recorder.mimeType || "video/webm",
+      });
+      const filename = `wordslime_${formatTimestamp(new Date())}.webm`;
+      downloadBlob(blob, filename);
+      resolve(filename);
+    });
+  });
+
+  const stop = () => {
+    if (stopped) {
+      return;
+    }
+
+    stopped = true;
+    if (recorder.state !== "inactive") {
+      recorder.stop();
+    }
+  };
+
+  timeout = window.setTimeout(stop, MAX_RECORDING_MS);
+  recorder.start(250);
+
+  return {
+    stop,
+    done,
+  };
+
+  function cleanup(): void {
+    window.clearTimeout(timeout);
+    stream.getTracks().forEach((track) => track.stop());
+  }
+}
+
+function selectMimeType(): string {
+  const candidates = [
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm",
+  ];
+
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function formatTimestamp(date: Date): string {
+  const yyyy = date.getFullYear().toString();
+  const mm = pad(date.getMonth() + 1);
+  const dd = pad(date.getDate());
+  const hh = pad(date.getHours());
+  const mi = pad(date.getMinutes());
+  const ss = pad(date.getSeconds());
+
+  return `${yyyy}${mm}${dd}_${hh}${mi}${ss}`;
+}
+
+function pad(value: number): string {
+  return value.toString().padStart(2, "0");
+}

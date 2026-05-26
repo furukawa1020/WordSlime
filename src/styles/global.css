@@ -461,6 +461,19 @@ button {
 @media (max-width: 720px) {
   .intro {
     top: 24px;
+    left: 20px;
+    max-width: calc(100vw - 40px);
+  }
+
+  .intro h1 {
+    font-size: clamp(32px, 12vw, 54px);
+  }
+
+  .toast {
+    top: 106px;
+    max-width: calc(100vw - 32px);
+    white-space: normal;
+    text-align: center;
   }
 
   .hud {
@@ -472,9 +485,37 @@ button {
     top: 12px;
   }
 
+  .icon-button {
+    height: 36px;
+    width: 36px;
+  }
+
+  .panel {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: calc(100vh - 176px);
+  }
+
   .input-dock {
     bottom: 12px;
-    width: calc(100vw - 24px);
+    left: 12px;
+    right: 12px;
+    width: auto;
+    transform: none;
+  }
+
+  .summon-form {
+    grid-template-columns: minmax(0, 1fr) 42px;
+  }
+
+  .summon-input {
+    min-width: 0;
+  }
+
+  .spawn-text {
+    max-width: calc(100vw - 32px);
+    font-size: clamp(24px, 9vw, 42px);
   }
 }
 

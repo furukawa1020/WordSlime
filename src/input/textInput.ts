@@ -69,6 +69,12 @@ export function attachTextInput(
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      textarea.value = "";
+      autoSizeTextarea(textarea);
+      return;
+    }
+
     if (event.key !== "Enter" || event.shiftKey || isComposing) {
       return;
     }

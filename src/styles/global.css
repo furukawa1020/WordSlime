@@ -40,6 +40,69 @@ button {
     linear-gradient(180deg, #071014 0%, #08171b 48%, #091014 100%);
 }
 
+.wordslime-shell[data-background="dark"] {
+  background:
+    radial-gradient(circle at 18% 26%, rgba(92, 99, 122, 0.12), transparent 30%),
+    linear-gradient(180deg, #020406 0%, #06090b 100%);
+}
+
+.wordslime-shell[data-background="milk"] {
+  color: rgba(21, 31, 32, 0.9);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(64, 91, 89, 0.08), transparent 34%),
+    linear-gradient(180deg, #d7ddd7 0%, #cfd8d2 54%, #c3cbc7 100%);
+}
+
+.wordslime-shell[data-background="paper"] {
+  color: rgba(22, 29, 27, 0.9);
+  background:
+    linear-gradient(135deg, rgba(31, 47, 43, 0.06) 25%, transparent 25%) 0 0 / 12px 12px,
+    linear-gradient(180deg, #b8beb4 0%, #aeb8b0 100%);
+}
+
+.wordslime-shell[data-background="milk"] .summon-form,
+.wordslime-shell[data-background="milk"] .hud,
+.wordslime-shell[data-background="milk"] .panel,
+.wordslime-shell[data-background="paper"] .summon-form,
+.wordslime-shell[data-background="paper"] .hud,
+.wordslime-shell[data-background="paper"] .panel {
+  border-color: rgba(24, 38, 35, 0.16);
+  background: rgba(237, 244, 238, 0.52);
+  color: rgba(18, 28, 29, 0.82);
+}
+
+.wordslime-shell[data-background="milk"] .summon-input,
+.wordslime-shell[data-background="paper"] .summon-input {
+  background: rgba(255, 255, 255, 0.38);
+  color: rgba(18, 28, 29, 0.9);
+}
+
+.wordslime-shell[data-background="milk"] .intro p,
+.wordslime-shell[data-background="paper"] .intro p,
+.wordslime-shell[data-background="milk"] .hud,
+.wordslime-shell[data-background="paper"] .hud,
+.wordslime-shell[data-background="milk"] .setting-label,
+.wordslime-shell[data-background="paper"] .setting-label {
+  color: rgba(18, 28, 29, 0.68);
+}
+
+.wordslime-shell[data-background="milk"] .icon-button,
+.wordslime-shell[data-background="paper"] .icon-button,
+.wordslime-shell[data-background="milk"] .text-button,
+.wordslime-shell[data-background="paper"] .text-button,
+.wordslime-shell[data-background="milk"] .segmented button,
+.wordslime-shell[data-background="paper"] .segmented button {
+  background: rgba(255, 255, 255, 0.38);
+  color: rgba(18, 28, 29, 0.78);
+  border-color: rgba(24, 38, 35, 0.14);
+}
+
+.wordslime-shell[data-background="milk"] .segmented button[aria-pressed="true"],
+.wordslime-shell[data-background="paper"] .segmented button[aria-pressed="true"] {
+  background: rgba(33, 83, 76, 0.22);
+  color: rgba(12, 24, 24, 0.94);
+}
+
 .wordslime-canvas {
   position: absolute;
   inset: 0;
@@ -202,10 +265,7 @@ button {
 }
 
 .panel[hidden] {
-  display: block;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-5px) scale(0.98);
+  display: none;
 }
 
 .panel h2 {

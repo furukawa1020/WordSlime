@@ -49,6 +49,9 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const audio = new AudioEngine();
   const sediment = new SedimentLayer(sedimentCanvas);
   let renderer: ParticleRenderer | undefined;
+  let rendererGeneration = 0;
+  let recoveringRenderer = false;
+  let destroyed = false;
   applyBackground(shell, state.settings.background);
   const setAudioMode = async (mode: AudioMode) => {
     state.settings.audioMode = mode;
@@ -129,25 +132,78 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     },
   });
 
-  createParticleRenderer(canvas, state.settings)
-    .then((particleRenderer) => {
+  const installRenderer = async (isRecovery: boolean): Promise<void> => {
+    const generation = ++rendererGeneration;
+
+    try {
+      const particleRenderer = await createParticleRenderer(canvas, state.settings);
+
+      if (destroyed || generation !== rendererGeneration) {
+        particleRenderer.stop();
+        return;
+      }
+
+      const previousRenderer = renderer;
       renderer = particleRenderer;
+      previousRenderer?.stop();
       renderer.setParticleBudget(
         qualityParticleBudgets[state.settings.particleQuality],
       );
       renderer.onDeviceLost((info) => {
+        if (destroyed) {
+          return;
+        }
+
         console.warn("GPU device lost", info);
-        showToast(toast, "GPU device lost. Reloading may help.", 2600);
+        void recoverRenderer();
       });
+
       for (const seed of state.seeds) {
         renderer.addSeed(seed);
       }
-      renderer.start();
-    })
-    .catch((error: unknown) => {
+
+      if (!state.isPaused) {
+        renderer.start();
+      }
+
+      updateHud(hud, state);
+
+      if (isRecovery) {
+        showToast(toast, "GPUをつなぎ直しました。", 1400);
+      }
+    } catch (error: unknown) {
+      if (destroyed || generation !== rendererGeneration) {
+        return;
+      }
+
       console.error(error);
-      root.innerHTML = renderUnsupported();
-    });
+
+      if (isRecovery) {
+        showToast(toast, "GPU復帰に失敗しました。再読み込みしてください。", 3200);
+      } else {
+        root.innerHTML = renderUnsupported();
+      }
+    }
+  };
+
+  const recoverRenderer = async (): Promise<void> => {
+    if (recoveringRenderer || destroyed) {
+      return;
+    }
+
+    recoveringRenderer = true;
+    renderer?.stop();
+    renderer = undefined;
+    showToast(toast, "GPUをつなぎ直しています。", 1800);
+
+    try {
+      await installRenderer(true);
+    } finally {
+      recoveringRenderer = false;
+    }
+  };
+
+  void installRenderer(false);
 
   const textInput = attachTextInput(
     form,
@@ -182,6 +238,8 @@ export function createApp(root: HTMLElement): WordSlimeApp {
 
   return {
     destroy() {
+      destroyed = true;
+      rendererGeneration += 1;
       textInput.destroy();
       pointerCleanup();
       settingsCleanup();

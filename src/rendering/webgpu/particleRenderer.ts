@@ -9,6 +9,10 @@ type PointerState = {
   y: number;
   active: boolean;
   down: boolean;
+  pulse: number;
+  vortex: number;
+  dragX: number;
+  dragY: number;
 };
 
 export type ParticleRenderer = {
@@ -55,7 +59,16 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly computeBindGroup: GPUBindGroup;
   private readonly renderBindGroup: GPUBindGroup;
   private readonly params = new Float32Array(PARAM_FLOATS);
-  private pointer: PointerState = { x: 0, y: 0, active: false, down: false };
+  private pointer: PointerState = {
+    x: 0,
+    y: 0,
+    active: false,
+    down: false,
+    pulse: 0,
+    vortex: 0,
+    dragX: 0,
+    dragY: 0,
+  };
   private deviceLostCallback: ((info: GPUDeviceLostInfo) => void) | undefined;
   private activeCount = 0;
   private activeBudget = this.maxParticles;
@@ -224,6 +237,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       y: pointer.y * scaleY,
       active: pointer.active,
       down: pointer.down,
+      pulse: Math.max(this.pointer.pulse, pointer.pulse),
+      vortex: Math.max(this.pointer.vortex, pointer.vortex),
+      dragX: pointer.dragX * scaleX,
+      dragY: pointer.dragY * scaleY,
     };
   }
 
@@ -318,12 +335,17 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.params[9] = this.settings.reduceMotion ? 1 : 0;
     this.params[10] = this.renderCount();
     this.params[11] = 0;
-    this.params[12] = 0;
-    this.params[13] = 0;
-    this.params[14] = 0;
-    this.params[15] = 0;
+    this.params[12] = this.pointer.pulse;
+    this.params[13] = this.pointer.vortex;
+    this.params[14] = this.pointer.dragX;
+    this.params[15] = this.pointer.dragY;
 
     this.gpu.device.queue.writeBuffer(this.paramsBuffer, 0, this.params);
+
+    this.pointer.pulse = Math.max(0, this.pointer.pulse - dt * 3.2);
+    this.pointer.vortex = Math.max(0, this.pointer.vortex - dt * 1.45);
+    this.pointer.dragX *= 0.86;
+    this.pointer.dragY *= 0.86;
   }
 
   private renderCount(): number {

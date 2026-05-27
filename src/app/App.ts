@@ -400,6 +400,9 @@ function attachActions(elements: ActionElements): () => void {
     if (event.key === "s" || event.key === "S") {
       event.preventDefault();
       void handleSave();
+    } else if (event.key === "v" || event.key === "V") {
+      event.preventDefault();
+      handleRecord();
     } else if (event.key === "r" || event.key === "R") {
       event.preventDefault();
       handleReset();

@@ -41,8 +41,8 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const panel = query<HTMLElement>(root, ".panel");
   const settingsToggle = query<HTMLButtonElement>(root, ".settings-toggle");
   const audioButton = query<HTMLButtonElement>(root, ".audio-toggle");
-  const saveButton = query<HTMLButtonElement>(root, ".save-button");
-  const recordButton = query<HTMLButtonElement>(root, ".record-button");
+  const saveButtons = queryAll<HTMLButtonElement>(root, ".save-button");
+  const recordButtons = queryAll<HTMLButtonElement>(root, ".record-button");
   const jsonButton = query<HTMLButtonElement>(root, ".json-button");
   const resetButton = query<HTMLButtonElement>(root, ".reset-button");
   const aboutButton = query<HTMLButtonElement>(root, ".about-button");
@@ -106,8 +106,8 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     canvas,
     sedimentCanvas,
     audioButton,
-    saveButton,
-    recordButton,
+    saveButtons,
+    recordButtons,
     jsonButton,
     resetButton,
     aboutButton,
@@ -288,7 +288,11 @@ function renderApp(): string {
         <div class="controls" aria-label="水槽操作">
           <button class="icon-button settings-toggle" type="button" title="設定" aria-label="設定" aria-expanded="false">⚙</button>
           <button class="icon-button audio-toggle" type="button" title="音をオン" aria-label="音をオン" aria-pressed="false">♪</button>
+        </div>
+
+        <div class="quick-actions" aria-label="保存操作">
           <button class="icon-button save-button" type="button" title="PNG保存" aria-label="PNG保存">◉</button>
+          <button class="icon-button record-button" type="button" title="WebM録画" aria-label="WebM録画" aria-pressed="false">●</button>
         </div>
 
         <section class="panel" hidden>
@@ -331,6 +335,7 @@ function renderApp(): string {
             </div>
           </div>
           <div class="panel-actions">
+            <button class="text-button save-button" type="button">PNG</button>
             <button class="text-button record-button" type="button" title="WebM録画。音がOff以外なら音も入ります。">WebM</button>
             <button class="text-button json-button" type="button">JSON</button>
             <button class="text-button reset-button" type="button">Reset</button>
@@ -374,8 +379,8 @@ type ActionElements = {
   canvas: HTMLCanvasElement;
   sedimentCanvas: HTMLCanvasElement;
   audioButton: HTMLButtonElement;
-  saveButton: HTMLButtonElement;
-  recordButton: HTMLButtonElement;
+  saveButtons: HTMLButtonElement[];
+  recordButtons: HTMLButtonElement[];
   jsonButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
   aboutButton: HTMLButtonElement;
@@ -415,7 +420,7 @@ function attachActions(elements: ActionElements): () => void {
       recording = startCanvasRecording([elements.canvas, elements.sedimentCanvas], {
         audioStream: elements.getAudioStream(),
       });
-      elements.recordButton.textContent = "Stop";
+      setRecordingButtons(elements.recordButtons, true);
       elements.onToast("REC — slime is being captured", 1400);
       void recording.done
         .then(() => {
@@ -427,7 +432,7 @@ function attachActions(elements: ActionElements): () => void {
         })
         .finally(() => {
           recording = undefined;
-          elements.recordButton.textContent = "WebM";
+          setRecordingButtons(elements.recordButtons, false);
         });
     } catch (error) {
       console.error(error);
@@ -503,8 +508,12 @@ function attachActions(elements: ActionElements): () => void {
   };
 
   elements.audioButton.addEventListener("click", handleAudioToggle);
-  elements.saveButton.addEventListener("click", handleSave);
-  elements.recordButton.addEventListener("click", handleRecord);
+  for (const button of elements.saveButtons) {
+    button.addEventListener("click", handleSave);
+  }
+  for (const button of elements.recordButtons) {
+    button.addEventListener("click", handleRecord);
+  }
   elements.jsonButton.addEventListener("click", handleJsonSave);
   elements.resetButton.addEventListener("click", handleReset);
   elements.aboutButton.addEventListener("click", handleAboutOpen);
@@ -513,8 +522,12 @@ function attachActions(elements: ActionElements): () => void {
 
   return () => {
     elements.audioButton.removeEventListener("click", handleAudioToggle);
-    elements.saveButton.removeEventListener("click", handleSave);
-    elements.recordButton.removeEventListener("click", handleRecord);
+    for (const button of elements.saveButtons) {
+      button.removeEventListener("click", handleSave);
+    }
+    for (const button of elements.recordButtons) {
+      button.removeEventListener("click", handleRecord);
+    }
     elements.jsonButton.removeEventListener("click", handleJsonSave);
     elements.resetButton.removeEventListener("click", handleReset);
     elements.aboutButton.removeEventListener("click", handleAboutOpen);
@@ -778,6 +791,23 @@ function updateAudioToggle(button: HTMLButtonElement, mode: AudioMode): void {
   button.setAttribute("aria-label", enabled ? "ミュート" : "音をオン");
 }
 
+function setRecordingButtons(
+  buttons: readonly HTMLButtonElement[],
+  isRecording: boolean,
+): void {
+  for (const button of buttons) {
+    button.setAttribute("aria-pressed", String(isRecording));
+    button.title = isRecording ? "録画停止" : "WebM録画";
+    button.setAttribute("aria-label", isRecording ? "録画停止" : "WebM録画");
+
+    if (button.classList.contains("icon-button")) {
+      button.textContent = isRecording ? "■" : "●";
+    } else {
+      button.textContent = isRecording ? "Stop" : "WebM";
+    }
+  }
+}
+
 function attachPointerTracking(
   canvas: HTMLCanvasElement,
   onPointer: (pointer: {
@@ -907,6 +937,16 @@ function query<T extends Element>(root: ParentNode, selector: string): T {
   }
 
   return element;
+}
+
+function queryAll<T extends Element>(root: ParentNode, selector: string): T[] {
+  const elements = Array.from(root.querySelectorAll<T>(selector));
+
+  if (elements.length === 0) {
+    throw new Error(`Missing elements: ${selector}`);
+  }
+
+  return elements;
 }
 
 function trimText(text: string, maxLength: number): string {

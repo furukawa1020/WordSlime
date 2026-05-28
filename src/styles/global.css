@@ -190,6 +190,15 @@ button {
   pointer-events: auto;
 }
 
+.quick-actions {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+}
+
 .icon-button {
   width: 38px;
   height: 38px;
@@ -489,6 +498,10 @@ button {
   .controls {
     right: 12px;
     top: 12px;
+  }
+
+  .quick-actions {
+    display: none;
   }
 
   .icon-button {

@@ -3,9 +3,16 @@ export type ActiveRecording = {
   done: Promise<string>;
 };
 
+export type RecordingOptions = {
+  audioStream?: MediaStream;
+};
+
 const MAX_RECORDING_MS = 30_000;
 
-export function startCanvasRecording(canvases: HTMLCanvasElement[]): ActiveRecording {
+export function startCanvasRecording(
+  canvases: HTMLCanvasElement[],
+  options: RecordingOptions = {},
+): ActiveRecording {
   const [base] = canvases;
 
   if (!base || !("captureStream" in base) || typeof MediaRecorder === "undefined") {
@@ -36,6 +43,13 @@ export function startCanvasRecording(canvases: HTMLCanvasElement[]): ActiveRecor
   paint();
 
   const stream = captureCanvas.captureStream(60);
+  const audioTracks =
+    options.audioStream?.getAudioTracks().map((track) => track.clone()) ?? [];
+
+  for (const track of audioTracks) {
+    stream.addTrack(track);
+  }
+
   const mimeType = selectMimeType();
   const recorder = new MediaRecorder(
     stream,

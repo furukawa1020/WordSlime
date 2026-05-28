@@ -4,6 +4,7 @@ import type { AppState, WordSeed } from "../app/state";
 export class AudioEngine {
   private context: AudioContext | undefined;
   private master: GainNode | undefined;
+  private recordingDestination: MediaStreamAudioDestinationNode | undefined;
   private hum: OscillatorNode | undefined;
   private humGain: GainNode | undefined;
   private mode: AudioMode = "off";
@@ -72,6 +73,14 @@ export class AudioEngine {
     }
   }
 
+  getRecordingStream(): MediaStream | undefined {
+    if (this.mode === "off") {
+      return undefined;
+    }
+
+    return this.recordingDestination?.stream;
+  }
+
   destroy(): void {
     this.hum?.stop();
     void this.context?.close();
@@ -81,8 +90,10 @@ export class AudioEngine {
     if (!this.context) {
       this.context = new AudioContext();
       this.master = this.context.createGain();
+      this.recordingDestination = this.context.createMediaStreamDestination();
       this.master.gain.value = 0;
       this.master.connect(this.context.destination);
+      this.master.connect(this.recordingDestination);
       this.createHum();
     }
 

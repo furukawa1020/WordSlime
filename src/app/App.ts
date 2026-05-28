@@ -112,6 +112,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     state,
     getRenderer: () => renderer,
     getSediment: () => sediment,
+    getAudioStream: () => audio.getRecordingStream(),
     onStateChange: () => updateHud(hud, state),
     onToast: (message, duration) => showToast(toast, message, duration),
     onAudioToggle: () => {
@@ -325,7 +326,7 @@ function renderApp(): string {
             </div>
           </div>
           <div class="panel-actions">
-            <button class="text-button record-button" type="button">WebM</button>
+            <button class="text-button record-button" type="button" title="WebM録画。音がOff以外なら音も入ります。">WebM</button>
             <button class="text-button json-button" type="button">JSON</button>
             <button class="text-button reset-button" type="button">Reset</button>
             <button class="text-button about-button" type="button">About</button>
@@ -377,6 +378,7 @@ type ActionElements = {
   state: AppState;
   getRenderer: () => ParticleRenderer | undefined;
   getSediment: () => SedimentLayer;
+  getAudioStream: () => MediaStream | undefined;
   onStateChange: () => void;
   onToast: (message: string, duration: number) => void;
   onAudioToggle: () => void;
@@ -404,7 +406,9 @@ function attachActions(elements: ActionElements): () => void {
     }
 
     try {
-      recording = startCanvasRecording([elements.canvas, elements.sedimentCanvas]);
+      recording = startCanvasRecording([elements.canvas, elements.sedimentCanvas], {
+        audioStream: elements.getAudioStream(),
+      });
       elements.recordButton.textContent = "Stop";
       elements.onToast("REC — slime is being captured", 1400);
       void recording.done

@@ -40,6 +40,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const toast = query<HTMLElement>(root, ".toast");
   const panel = query<HTMLElement>(root, ".panel");
   const settingsToggle = query<HTMLButtonElement>(root, ".settings-toggle");
+  const audioButton = query<HTMLButtonElement>(root, ".audio-toggle");
   const saveButton = query<HTMLButtonElement>(root, ".save-button");
   const recordButton = query<HTMLButtonElement>(root, ".record-button");
   const jsonButton = query<HTMLButtonElement>(root, ".json-button");
@@ -55,9 +56,11 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   let destroyed = false;
   applyBackground(shell, state.settings.background);
   syncSettingsPanel(panel, state.settings);
+  updateAudioToggle(audioButton, state.settings.audioMode);
   const setAudioMode = async (mode: AudioMode) => {
     state.settings.audioMode = mode;
     updatePressed(panel, "data-audio", mode);
+    updateAudioToggle(audioButton, mode);
     updateHud(hud, state);
     const available = await audio.setMode(mode);
 
@@ -102,6 +105,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const actionCleanup = attachActions({
     canvas,
     sedimentCanvas,
+    audioButton,
     saveButton,
     recordButton,
     jsonButton,
@@ -283,6 +287,7 @@ function renderApp(): string {
 
         <div class="controls" aria-label="水槽操作">
           <button class="icon-button settings-toggle" type="button" title="設定" aria-label="設定" aria-expanded="false">⚙</button>
+          <button class="icon-button audio-toggle" type="button" title="音をオン" aria-label="音をオン" aria-pressed="false">♪</button>
           <button class="icon-button save-button" type="button" title="PNG保存" aria-label="PNG保存">◉</button>
         </div>
 
@@ -368,6 +373,7 @@ function renderApp(): string {
 type ActionElements = {
   canvas: HTMLCanvasElement;
   sedimentCanvas: HTMLCanvasElement;
+  audioButton: HTMLButtonElement;
   saveButton: HTMLButtonElement;
   recordButton: HTMLButtonElement;
   jsonButton: HTMLButtonElement;
@@ -459,6 +465,10 @@ function attachActions(elements: ActionElements): () => void {
     elements.aboutModal.hidden = true;
   };
 
+  const handleAudioToggle = () => {
+    elements.onAudioToggle();
+  };
+
   const handleKeyDown = (event: KeyboardEvent) => {
     if (isEditableTarget(event.target)) {
       return;
@@ -492,6 +502,7 @@ function attachActions(elements: ActionElements): () => void {
     }
   };
 
+  elements.audioButton.addEventListener("click", handleAudioToggle);
   elements.saveButton.addEventListener("click", handleSave);
   elements.recordButton.addEventListener("click", handleRecord);
   elements.jsonButton.addEventListener("click", handleJsonSave);
@@ -501,6 +512,7 @@ function attachActions(elements: ActionElements): () => void {
   window.addEventListener("keydown", handleKeyDown);
 
   return () => {
+    elements.audioButton.removeEventListener("click", handleAudioToggle);
     elements.saveButton.removeEventListener("click", handleSave);
     elements.recordButton.removeEventListener("click", handleRecord);
     elements.jsonButton.removeEventListener("click", handleJsonSave);
@@ -757,6 +769,13 @@ function syncSettingsPanel(panel: HTMLElement, settings: AppSettings): void {
   updatePressed(panel, "data-quality", settings.particleQuality);
   updatePressed(panel, "data-background", settings.background);
   updatePressed(panel, "data-audio", settings.audioMode);
+}
+
+function updateAudioToggle(button: HTMLButtonElement, mode: AudioMode): void {
+  const enabled = mode !== "off";
+  button.setAttribute("aria-pressed", String(enabled));
+  button.title = enabled ? "ミュート" : "音をオン";
+  button.setAttribute("aria-label", enabled ? "ミュート" : "音をオン");
 }
 
 function attachPointerTracking(

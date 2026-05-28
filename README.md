@@ -12,7 +12,7 @@ It transforms textual features such as length, repetition, punctuation, and rhyt
 - Procedural Web Audio
 - Text-to-physics mapping
 - Local-only execution
-- Screenshot export
+- PNG, WebM, and JSON export
 - No login, no server, no external API
 
 ## Requirements
@@ -27,6 +27,12 @@ npm install
 npm run dev
 ```
 
+Then open:
+
+```text
+http://127.0.0.1:5173/
+```
+
 PowerShell環境で `npm` が実行ポリシーに止められる場合は、次のように実行してください。
 
 ```bash
@@ -34,6 +40,14 @@ npm.cmd install
 npm.cmd run dev
 ```
 
+## Checks
+
+```bash
+npm run test
+npm run build
+```
+
 ## Privacy
 
 Typed text is processed locally in your browser and is not sent anywhere.
+Only visual settings are stored in `localStorage`; typed words are not auto-saved.

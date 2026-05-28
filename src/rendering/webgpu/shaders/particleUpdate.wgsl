@@ -96,17 +96,32 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
 
   let pointer_active = params.pointer.z;
   let pointer_down = params.pointer.w;
+  let pointer_pulse = params.extra.x;
+  let pointer_vortex = params.extra.y;
+  let pointer_drag = params.extra.zw;
   let pointer_delta = particle.position - params.pointer.xy;
   let pointer_dist = max(length(pointer_delta), 1.0);
 
-  if (pointer_active > 0.5 && pointer_dist < 220.0) {
-    let influence = (1.0 - pointer_dist / 220.0);
+  if (pointer_active > 0.5 && pointer_dist < 260.0) {
+    let influence = (1.0 - pointer_dist / 260.0);
     let direction = pointer_delta / pointer_dist;
 
     if (pointer_down > 0.5) {
-      flow -= direction * influence * 180.0;
+      flow -= direction * influence * 220.0;
+      flow += pointer_drag * influence * 1.8;
     } else {
       flow += direction * influence * 92.0;
+    }
+
+    if (pointer_pulse > 0.001) {
+      let ring = 1.0 - min(abs(pointer_dist - 84.0) / 84.0, 1.0);
+      flow += direction * ring * pointer_pulse * 340.0;
+    }
+
+    if (pointer_vortex > 0.001) {
+      let tangent = vec2f(-direction.y, direction.x);
+      flow += tangent * influence * pointer_vortex * 520.0;
+      flow -= direction * influence * pointer_vortex * 72.0;
     }
   }
 

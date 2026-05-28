@@ -749,37 +749,101 @@ function attachPointerTracking(
     y: number;
     active: boolean;
     down: boolean;
+    pulse: number;
+    vortex: number;
+    dragX: number;
+    dragY: number;
   }) => void,
 ): () => void {
   let down = false;
+  let downAt = 0;
+  let downPoint = { x: 0, y: 0 };
+  let lastPoint = { x: 0, y: 0 };
 
-  const pointFromEvent = (event: PointerEvent) => {
+  const pointFromEvent = (
+    event: PointerEvent,
+    signal: {
+      pulse?: number;
+      vortex?: number;
+      dragX?: number;
+      dragY?: number;
+    } = {},
+  ) => {
     const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
     return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
+      x,
+      y,
       active: true,
       down,
+      pulse: signal.pulse ?? 0,
+      vortex: signal.vortex ?? 0,
+      dragX: signal.dragX ?? 0,
+      dragY: signal.dragY ?? 0,
     };
   };
 
   const handleMove = (event: PointerEvent) => {
-    onPointer(pointFromEvent(event));
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const dragX = down ? x - lastPoint.x : 0;
+    const dragY = down ? y - lastPoint.y : 0;
+    lastPoint = { x, y };
+    onPointer(pointFromEvent(event, { dragX, dragY }));
   };
 
   const handleDown = (event: PointerEvent) => {
     down = true;
+    downAt = performance.now();
+    const rect = canvas.getBoundingClientRect();
+    downPoint = {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+    lastPoint = downPoint;
     canvas.setPointerCapture(event.pointerId);
     onPointer(pointFromEvent(event));
   };
 
   const handleUp = (event: PointerEvent) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const moved = Math.hypot(x - downPoint.x, y - downPoint.y);
+    const wasTap = performance.now() - downAt < 360 && moved < 12;
     down = false;
-    onPointer(pointFromEvent(event));
+    onPointer(pointFromEvent(event, { pulse: wasTap ? 1 : 0 }));
+  };
+
+  const handleDoubleClick = (event: MouseEvent) => {
+    const rect = canvas.getBoundingClientRect();
+    down = false;
+    onPointer({
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+      active: true,
+      down: false,
+      pulse: 0.35,
+      vortex: 1,
+      dragX: 0,
+      dragY: 0,
+    });
   };
 
   const handleLeave = () => {
-    onPointer({ x: 0, y: 0, active: false, down: false });
+    onPointer({
+      x: 0,
+      y: 0,
+      active: false,
+      down: false,
+      pulse: 0,
+      vortex: 0,
+      dragX: 0,
+      dragY: 0,
+    });
   };
 
   canvas.addEventListener("pointermove", handleMove);
@@ -787,6 +851,7 @@ function attachPointerTracking(
   canvas.addEventListener("pointerup", handleUp);
   canvas.addEventListener("pointercancel", handleUp);
   canvas.addEventListener("pointerleave", handleLeave);
+  canvas.addEventListener("dblclick", handleDoubleClick);
 
   return () => {
     canvas.removeEventListener("pointermove", handleMove);
@@ -794,6 +859,7 @@ function attachPointerTracking(
     canvas.removeEventListener("pointerup", handleUp);
     canvas.removeEventListener("pointercancel", handleUp);
     canvas.removeEventListener("pointerleave", handleLeave);
+    canvas.removeEventListener("dblclick", handleDoubleClick);
   };
 }
 

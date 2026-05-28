@@ -54,6 +54,12 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   let rendererGeneration = 0;
   let recoveringRenderer = false;
   let destroyed = false;
+  let densityScale = 1;
+  const applyParticleBudget = () => {
+    renderer?.setParticleBudget(
+      qualityParticleBudgets[state.settings.particleQuality] * densityScale,
+    );
+  };
   applyBackground(shell, state.settings.background);
   syncSettingsPanel(panel, state.settings);
   updateAudioToggle(audioButton, state.settings.audioMode);
@@ -78,17 +84,22 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     renderer?.resize();
   });
   resizeObserver.observe(canvas);
-  const pointerCleanup = attachPointerTracking(canvas, (pointer) => {
-    renderer?.setPointer(pointer);
-  });
+  const pointerCleanup = attachPointerTracking(
+    canvas,
+    (pointer) => {
+      renderer?.setPointer(pointer);
+    },
+    (scaleFactor) => {
+      densityScale = clamp(densityScale * scaleFactor, 0.45, 1.6);
+      applyParticleBudget();
+    },
+  );
   const settingsCleanup = attachSettingsPanel(
     panel,
     settingsToggle,
     state,
     () => {
-      renderer?.setParticleBudget(
-        qualityParticleBudgets[state.settings.particleQuality],
-      );
+      applyParticleBudget();
       saveSettings(state.settings);
       updateHud(hud, state);
       showToast(toast, modeLabels[state.settings.mode], 900);
@@ -156,9 +167,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       const previousRenderer = renderer;
       renderer = particleRenderer;
       previousRenderer?.stop();
-      renderer.setParticleBudget(
-        qualityParticleBudgets[state.settings.particleQuality],
-      );
+      applyParticleBudget();
       renderer.onDeviceLost((info) => {
         if (destroyed) {
           return;
@@ -820,11 +829,14 @@ function attachPointerTracking(
     dragX: number;
     dragY: number;
   }) => void,
+  onPinchDensity?: (scaleFactor: number) => void,
 ): () => void {
   let down = false;
   let downAt = 0;
   let downPoint = { x: 0, y: 0 };
   let lastPoint = { x: 0, y: 0 };
+  let lastPinchDistance = 0;
+  const activePointers = new Map<number, { x: number; y: number }>();
 
   const pointFromEvent = (
     event: PointerEvent,
@@ -858,6 +870,8 @@ function attachPointerTracking(
     const dragX = down ? x - lastPoint.x : 0;
     const dragY = down ? y - lastPoint.y : 0;
     lastPoint = { x, y };
+    activePointers.set(event.pointerId, { x, y });
+    updatePinchDensity();
     onPointer(pointFromEvent(event, { dragX, dragY }));
   };
 
@@ -870,6 +884,8 @@ function attachPointerTracking(
       y: event.clientY - rect.top,
     };
     lastPoint = downPoint;
+    activePointers.set(event.pointerId, downPoint);
+    refreshPinchDistance();
     canvas.setPointerCapture(event.pointerId);
     onPointer(pointFromEvent(event));
   };
@@ -880,7 +896,9 @@ function attachPointerTracking(
     const y = event.clientY - rect.top;
     const moved = Math.hypot(x - downPoint.x, y - downPoint.y);
     const wasTap = performance.now() - downAt < 360 && moved < 12;
-    down = false;
+    activePointers.delete(event.pointerId);
+    down = activePointers.size > 0;
+    refreshPinchDistance();
     onPointer(pointFromEvent(event, { pulse: wasTap ? 1 : 0 }));
   };
 
@@ -900,6 +918,9 @@ function attachPointerTracking(
   };
 
   const handleLeave = () => {
+    activePointers.clear();
+    lastPinchDistance = 0;
+    down = false;
     onPointer({
       x: 0,
       y: 0,
@@ -910,6 +931,28 @@ function attachPointerTracking(
       dragX: 0,
       dragY: 0,
     });
+  };
+
+  const refreshPinchDistance = () => {
+    const pointers = Array.from(activePointers.values());
+    lastPinchDistance =
+      pointers.length >= 2 ? distanceBetween(pointers[0], pointers[1]) : 0;
+  };
+
+  const updatePinchDensity = () => {
+    if (!onPinchDensity || activePointers.size < 2) {
+      lastPinchDistance = 0;
+      return;
+    }
+
+    const pointers = Array.from(activePointers.values());
+    const distance = distanceBetween(pointers[0], pointers[1]);
+
+    if (lastPinchDistance > 1) {
+      onPinchDensity(clamp(distance / lastPinchDistance, 0.94, 1.06));
+    }
+
+    lastPinchDistance = distance;
   };
 
   canvas.addEventListener("pointermove", handleMove);
@@ -947,6 +990,17 @@ function queryAll<T extends Element>(root: ParentNode, selector: string): T[] {
   }
 
   return elements;
+}
+
+function distanceBetween(
+  first: { x: number; y: number },
+  second: { x: number; y: number },
+): number {
+  return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function trimText(text: string, maxLength: number): string {

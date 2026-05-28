@@ -1,7 +1,7 @@
 import type { SlimeGenome } from "../input/genome";
 import type { TextFeatures } from "../input/textFeatures";
 import type { AppSettings } from "./settings";
-import { defaultSettings } from "./settings";
+import { loadSettings } from "./settings";
 
 export type Vec2 = {
   x: number;
@@ -34,7 +34,7 @@ export function createInitialState(): AppState {
   return {
     isPaused: false,
     seeds: [],
-    settings: defaultSettings,
+    settings: loadSettings(),
     queuedInputs: 0,
     totalParticles: 0,
     performance: {

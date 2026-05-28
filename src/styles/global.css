@@ -213,6 +213,12 @@ button {
   transform: translateY(1px);
 }
 
+.icon-button[aria-pressed="true"] {
+  background: rgba(185, 255, 228, 0.2);
+  border-color: rgba(220, 255, 244, 0.28);
+  color: rgba(249, 255, 252, 0.96);
+}
+
 .input-dock {
   position: absolute;
   left: 50%;

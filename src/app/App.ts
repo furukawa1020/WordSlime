@@ -1,5 +1,5 @@
 import { AudioEngine } from "../audio/audioEngine";
-import type { AudioMode } from "./settings";
+import type { AppSettings, AudioMode } from "./settings";
 import { startCanvasRecording, type ActiveRecording } from "../export/recorder";
 import { saveWordSlimeJson } from "../export/saveJson";
 import { saveCanvasPng } from "../export/screenshot";
@@ -18,6 +18,7 @@ import {
   qualityLabels,
   qualityParticleBudgets,
   qualityParticleMultipliers,
+  saveSettings,
 } from "./settings";
 
 export type WordSlimeApp = {
@@ -53,6 +54,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   let recoveringRenderer = false;
   let destroyed = false;
   applyBackground(shell, state.settings.background);
+  syncSettingsPanel(panel, state.settings);
   const setAudioMode = async (mode: AudioMode) => {
     state.settings.audioMode = mode;
     updatePressed(panel, "data-audio", mode);
@@ -84,12 +86,14 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       renderer?.setParticleBudget(
         qualityParticleBudgets[state.settings.particleQuality],
       );
+      saveSettings(state.settings);
       updateHud(hud, state);
       showToast(toast, modeLabels[state.settings.mode], 900);
     },
     (background) => {
       state.settings.background = background;
       applyBackground(shell, background);
+      saveSettings(state.settings);
       updateHud(hud, state);
       showToast(toast, backgroundLabels[background], 900);
     },
@@ -127,6 +131,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     onModeSelect: (mode) => {
       state.settings.mode = mode;
       updatePressed(panel, "data-mode", mode);
+      saveSettings(state.settings);
       updateHud(hud, state);
       showToast(toast, modeLabels[mode], 900);
     },
@@ -618,6 +623,7 @@ function degradeQuality(
   options.state.settings.particleQuality = next;
   options.state.performance.degraded = true;
   updatePressed(options.panel, "data-quality", next);
+  saveSettings(options.state.settings);
   options.getRenderer()?.setParticleBudget(qualityParticleBudgets[next]);
   options.onToast(`Particle quality lowered: ${qualityLabels[next]}`, 1700);
 }
@@ -740,6 +746,13 @@ function updatePressed(panel: HTMLElement, attribute: string, active: string): v
       String(button.getAttribute(attribute) === active),
     );
   }
+}
+
+function syncSettingsPanel(panel: HTMLElement, settings: AppSettings): void {
+  updatePressed(panel, "data-mode", settings.mode);
+  updatePressed(panel, "data-quality", settings.particleQuality);
+  updatePressed(panel, "data-background", settings.background);
+  updatePressed(panel, "data-audio", settings.audioMode);
 }
 
 function attachPointerTracking(

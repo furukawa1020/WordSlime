@@ -7,6 +7,7 @@ import { mapFeaturesToGenome, particleCountForFeatures } from "../input/genome";
 import { attachTextInput } from "../input/textInput";
 import { extractTextFeatures } from "../input/textFeatures";
 import { SedimentLayer } from "../rendering/sedimentLayer";
+import { TextDecayLayer } from "../rendering/textDecayLayer";
 import {
   createParticleRenderer,
   type ParticleRenderer,
@@ -31,6 +32,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
 
   const shell = query<HTMLElement>(root, ".wordslime-shell");
   const sedimentCanvas = query<HTMLCanvasElement>(root, ".sediment-canvas");
+  const textDecayCanvas = query<HTMLCanvasElement>(root, ".text-decay-canvas");
   const canvas = query<HTMLCanvasElement>(root, ".wordslime-canvas");
   const form = query<HTMLFormElement>(root, ".summon-form");
   const textarea = query<HTMLTextAreaElement>(root, ".summon-input");
@@ -50,6 +52,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const aboutClose = query<HTMLButtonElement>(root, ".about-close");
   const audio = new AudioEngine();
   const sediment = new SedimentLayer(sedimentCanvas);
+  const textDecay = new TextDecayLayer(textDecayCanvas);
   let renderer: ParticleRenderer | undefined;
   let rendererGeneration = 0;
   let recoveringRenderer = false;
@@ -81,6 +84,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const resizeObserver = new ResizeObserver(() => {
     resizeCanvas(canvas);
     sediment.resize();
+    textDecay.resize();
     renderer?.resize();
   });
   resizeObserver.observe(canvas);
@@ -116,6 +120,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const actionCleanup = attachActions({
     canvas,
     sedimentCanvas,
+    textDecayCanvas,
     audioButton,
     saveButtons,
     recordButtons,
@@ -233,6 +238,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       state.totalParticles += seed.particleCount;
       intro.dataset.hidden = "true";
       showSpawnText(spawnText, text);
+      textDecay.play(text, state.settings);
       sediment.addSeed(seed);
       renderer?.addSeed(seed);
       audio.playSpawn(seed);
@@ -265,6 +271,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       actionCleanup();
       performanceCleanup();
       renderer?.stop();
+      textDecay.destroy();
       audio.destroy();
       resizeObserver.disconnect();
     },
@@ -287,6 +294,7 @@ function renderApp(): string {
     <main class="wordslime-shell">
       <canvas class="wordslime-canvas" aria-label="WordSlime water tank"></canvas>
       <canvas class="sediment-canvas" aria-hidden="true"></canvas>
+      <canvas class="text-decay-canvas" aria-hidden="true"></canvas>
       <div class="ui-layer">
         <section class="intro">
           <h1>WordSlime</h1>
@@ -387,6 +395,7 @@ function renderApp(): string {
 type ActionElements = {
   canvas: HTMLCanvasElement;
   sedimentCanvas: HTMLCanvasElement;
+  textDecayCanvas: HTMLCanvasElement;
   audioButton: HTMLButtonElement;
   saveButtons: HTMLButtonElement[];
   recordButtons: HTMLButtonElement[];
@@ -426,9 +435,12 @@ function attachActions(elements: ActionElements): () => void {
     }
 
     try {
-      recording = startCanvasRecording([elements.canvas, elements.sedimentCanvas], {
-        audioStream: elements.getAudioStream(),
-      });
+      recording = startCanvasRecording(
+        [elements.canvas, elements.sedimentCanvas, elements.textDecayCanvas],
+        {
+          audioStream: elements.getAudioStream(),
+        },
+      );
       setRecordingButtons(elements.recordButtons, true);
       elements.onToast("REC — slime is being captured", 1400);
       void recording.done
@@ -467,6 +479,7 @@ function attachActions(elements: ActionElements): () => void {
     elements.state.queuedInputs = 0;
     elements.getRenderer()?.clear();
     elements.getSediment().clear();
+    clearCanvas(elements.textDecayCanvas);
     elements.onStateChange();
     elements.onToast("水槽を空にしました。", 1100);
   };

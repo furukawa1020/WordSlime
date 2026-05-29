@@ -6,6 +6,7 @@ import { saveCanvasPng } from "../export/screenshot";
 import { mapFeaturesToGenome, particleCountForFeatures } from "../input/genome";
 import { attachTextInput } from "../input/textInput";
 import { extractTextFeatures } from "../input/textFeatures";
+import { InteractionLayer } from "../rendering/interactionLayer";
 import { SedimentLayer } from "../rendering/sedimentLayer";
 import { TextDecayLayer } from "../rendering/textDecayLayer";
 import {
@@ -32,6 +33,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
 
   const shell = query<HTMLElement>(root, ".wordslime-shell");
   const sedimentCanvas = query<HTMLCanvasElement>(root, ".sediment-canvas");
+  const interactionCanvas = query<HTMLCanvasElement>(root, ".interaction-canvas");
   const textDecayCanvas = query<HTMLCanvasElement>(root, ".text-decay-canvas");
   const canvas = query<HTMLCanvasElement>(root, ".wordslime-canvas");
   const form = query<HTMLFormElement>(root, ".summon-form");
@@ -52,6 +54,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const aboutClose = query<HTMLButtonElement>(root, ".about-close");
   const audio = new AudioEngine();
   const sediment = new SedimentLayer(sedimentCanvas);
+  const interactionLayer = new InteractionLayer(interactionCanvas);
   const textDecay = new TextDecayLayer(textDecayCanvas);
   let renderer: ParticleRenderer | undefined;
   let rendererGeneration = 0;
@@ -84,6 +87,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const resizeObserver = new ResizeObserver(() => {
     resizeCanvas(canvas);
     sediment.resize();
+    interactionLayer.resize();
     textDecay.resize();
     renderer?.resize();
   });
@@ -92,10 +96,12 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     canvas,
     (pointer) => {
       renderer?.setPointer(pointer);
+      interactionLayer.interact(pointer);
     },
     (scaleFactor) => {
       densityScale = clamp(densityScale * scaleFactor, 0.45, 1.6);
       applyParticleBudget();
+      interactionLayer.showDensityPulse(scaleFactor);
     },
   );
   const settingsCleanup = attachSettingsPanel(
@@ -120,6 +126,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const actionCleanup = attachActions({
     canvas,
     sedimentCanvas,
+    interactionCanvas,
     textDecayCanvas,
     audioButton,
     saveButtons,
@@ -275,6 +282,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       actionCleanup();
       performanceCleanup();
       renderer?.stop();
+      interactionLayer.destroy();
       textDecay.destroy();
       audio.destroy();
       resizeObserver.disconnect();
@@ -298,6 +306,7 @@ function renderApp(): string {
     <main class="wordslime-shell">
       <canvas class="wordslime-canvas" aria-label="WordSlime water tank"></canvas>
       <canvas class="sediment-canvas" aria-hidden="true"></canvas>
+      <canvas class="interaction-canvas" aria-hidden="true"></canvas>
       <canvas class="text-decay-canvas" aria-hidden="true"></canvas>
       <div class="ui-layer">
         <section class="intro">
@@ -399,6 +408,7 @@ function renderApp(): string {
 type ActionElements = {
   canvas: HTMLCanvasElement;
   sedimentCanvas: HTMLCanvasElement;
+  interactionCanvas: HTMLCanvasElement;
   textDecayCanvas: HTMLCanvasElement;
   audioButton: HTMLButtonElement;
   saveButtons: HTMLButtonElement[];
@@ -427,6 +437,7 @@ function attachActions(elements: ActionElements): () => void {
       await saveCanvasPng([
         elements.canvas,
         elements.sedimentCanvas,
+        elements.interactionCanvas,
         elements.textDecayCanvas,
       ]);
       elements.onToast("標本を保存しました。", 1400);
@@ -444,7 +455,12 @@ function attachActions(elements: ActionElements): () => void {
 
     try {
       recording = startCanvasRecording(
-        [elements.canvas, elements.sedimentCanvas, elements.textDecayCanvas],
+        [
+          elements.canvas,
+          elements.sedimentCanvas,
+          elements.interactionCanvas,
+          elements.textDecayCanvas,
+        ],
         {
           audioStream: elements.getAudioStream(),
         },
@@ -487,6 +503,7 @@ function attachActions(elements: ActionElements): () => void {
     elements.state.queuedInputs = 0;
     elements.getRenderer()?.clear();
     elements.getSediment().clear();
+    clearCanvas(elements.interactionCanvas);
     clearCanvas(elements.textDecayCanvas);
     elements.onStateChange();
     elements.onToast("水槽を空にしました。", 1100);

@@ -9,6 +9,8 @@ export class AudioEngine {
   private humGain: GainNode | undefined;
   private mode: AudioMode = "off";
   private lastChirp = 0;
+  private activeVoices = 0;
+  private readonly maxVoices = 12;
 
   async setMode(mode: AudioMode): Promise<boolean> {
     this.mode = mode;
@@ -33,6 +35,10 @@ export class AudioEngine {
       return;
     }
 
+    if (!this.reserveVoice()) {
+      return;
+    }
+
     const now = this.context.currentTime;
     const osc = this.context.createOscillator();
     const gain = this.context.createGain();
@@ -50,8 +56,44 @@ export class AudioEngine {
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(this.master);
+    osc.addEventListener("ended", () => this.releaseVoice(), { once: true });
     osc.start(now);
     osc.stop(now + 0.32);
+  }
+
+  playCollision(seed: WordSeed, otherSeed: WordSeed): void {
+    if (this.mode === "off" || !this.context || !this.master) {
+      return;
+    }
+
+    if (!this.reserveVoice()) {
+      return;
+    }
+
+    const now = this.context.currentTime;
+    const osc = this.context.createOscillator();
+    const gain = this.context.createGain();
+    const filter = this.context.createBiquadFilter();
+    const pitch =
+      160 +
+      (seed.genome.pitchBase + otherSeed.genome.pitchBase) * 160 +
+      seed.features.punctuationRatio * 260;
+
+    osc.type = this.mode === "weird" ? "square" : "triangle";
+    osc.frequency.setValueAtTime(pitch, now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(62, pitch * 0.42), now + 0.11);
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(420 + seed.genome.brightness * 900, now);
+    filter.Q.setValueAtTime(4.5, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.018 + seed.genome.energy * 0.024, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.13);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.master);
+    osc.addEventListener("ended", () => this.releaseVoice(), { once: true });
+    osc.start(now);
+    osc.stop(now + 0.15);
   }
 
   updateHum(state: AppState): void {
@@ -140,6 +182,10 @@ export class AudioEngine {
     const osc = this.context.createOscillator();
     const gain = this.context.createGain();
 
+    if (!this.reserveVoice()) {
+      return;
+    }
+
     osc.type = this.mode === "weird" ? "square" : "triangle";
     osc.frequency.setValueAtTime(360 + seed.genome.pitchBase * 520, now);
     osc.frequency.exponentialRampToValueAtTime(180 + seed.genome.pitchBase * 460, now + 0.1);
@@ -148,7 +194,21 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
     osc.connect(gain);
     gain.connect(this.master);
+    osc.addEventListener("ended", () => this.releaseVoice(), { once: true });
     osc.start(now);
     osc.stop(now + 0.16);
+  }
+
+  private reserveVoice(): boolean {
+    if (this.activeVoices >= this.maxVoices) {
+      return false;
+    }
+
+    this.activeVoices += 1;
+    return true;
+  }
+
+  private releaseVoice(): void {
+    this.activeVoices = Math.max(0, this.activeVoices - 1);
   }
 }

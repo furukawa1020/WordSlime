@@ -420,7 +420,11 @@ function attachActions(elements: ActionElements): () => void {
 
   const handleSave = async () => {
     try {
-      await saveCanvasPng([elements.canvas, elements.sedimentCanvas]);
+      await saveCanvasPng([
+        elements.canvas,
+        elements.sedimentCanvas,
+        elements.textDecayCanvas,
+      ]);
       elements.onToast("標本を保存しました。", 1400);
     } catch (error) {
       console.error(error);
@@ -700,6 +704,11 @@ function resizeCanvas(canvas: HTMLCanvasElement): void {
   const rect = canvas.getBoundingClientRect();
   canvas.width = Math.max(1, Math.floor(rect.width * dpr));
   canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+}
+
+function clearCanvas(canvas: HTMLCanvasElement): void {
+  const context = canvas.getContext("2d");
+  context?.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 function applyBackground(shell: HTMLElement, background: string): void {

@@ -233,6 +233,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     form,
     textarea,
     (text) => {
+      const previousSeed = state.seeds.at(-1);
       const seed = createWordSeed(text, state, canvas);
       state.seeds = [...state.seeds, seed].slice(-36);
       state.totalParticles += seed.particleCount;
@@ -242,6 +243,9 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       sediment.addSeed(seed);
       renderer?.addSeed(seed);
       audio.playSpawn(seed);
+      if (previousSeed) {
+        audio.playCollision(seed, previousSeed);
+      }
       audio.updateHum(state);
       updateHud(hud, state);
     },

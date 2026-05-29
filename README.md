@@ -47,6 +47,16 @@ npm run test
 npm run build
 ```
 
+## Netlify
+
+Netlify can build this as a static Vite site.
+
+- Build command: `npm run build`
+- Publish directory: `dist`
+- Node version: `22`
+
+The included `netlify.toml` sets these values. WebGPU requires a secure context, so use the HTTPS Netlify deploy URL when trying the live build.
+
 ## Privacy
 
 Typed text is processed locally in your browser and is not sent anywhere.

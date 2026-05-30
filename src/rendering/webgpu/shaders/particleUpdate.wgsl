@@ -18,6 +18,37 @@ struct SimParams {
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
 @group(0) @binding(1) var<uniform> params: SimParams;
 
+const TAU = 6.28318530718;
+
+fn hash(point: vec2f) -> f32 {
+  let p = fract(vec3f(point.xyx) * 0.1031);
+  let q = p + dot(p, p.yzx + 33.33);
+  return fract((q.x + q.y) * q.z);
+}
+
+fn noise(point: vec2f) -> f32 {
+  let cell = floor(point);
+  let local = fract(point);
+  let curve = local * local * (3.0 - 2.0 * local);
+  let a = hash(cell);
+  let b = hash(cell + vec2f(1.0, 0.0));
+  let c = hash(cell + vec2f(0.0, 1.0));
+  let d = hash(cell + vec2f(1.0, 1.0));
+  return mix(mix(a, b, curve.x), mix(c, d, curve.x), curve.y);
+}
+
+fn curlFlow(position: vec2f, time: f32, energy: f32) -> vec2f {
+  let point = position * 0.0046 + vec2f(time * 0.032, -time * 0.024);
+  let step = 0.052;
+  let up = noise(point + vec2f(0.0, step));
+  let down = noise(point - vec2f(0.0, step));
+  let right = noise(point + vec2f(step, 0.0));
+  let left = noise(point - vec2f(step, 0.0));
+  let gradient = vec2f(up - down, right - left);
+  return normalize(vec2f(gradient.x, -gradient.y) + vec2f(0.001)) *
+    (22.0 + energy * 94.0);
+}
+
 fn membraneForce(position: vec2f, size: vec2f) -> vec2f {
   let margin = 90.0;
   var force = vec2f(0.0);
@@ -65,6 +96,17 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   );
 
   var flow = wave * (10.0 + particle.energy * 46.0);
+  flow += curlFlow(particle.position, time, particle.energy);
+
+  let well = vec2f(
+    size.x * (0.5 + sin(time * 0.19) * 0.21),
+    size.y * (0.53 + cos(time * 0.17) * 0.17)
+  );
+  let to_well = well - particle.position;
+  let well_dist = max(length(to_well), 1.0);
+  let well_influence = 1.0 - smoothstep(120.0, 560.0, well_dist);
+  flow += vec2f(-to_well.y, to_well.x) / well_dist *
+    well_influence * (26.0 + particle.energy * 78.0);
 
   if (mode < 0.5) {
     flow += normalize(to_center) * (8.0 + particle.energy * 18.0);
@@ -135,6 +177,18 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     particle.velocity *= 0.965;
     particle.position.y += dt * (16.0 + particle.radius);
     particle.color.a *= 0.998;
+  }
+
+  if (particle.age > particle.life * 1.72) {
+    let cycle = floor(time * 0.29);
+    let seed = vec2f(f32(index), cycle);
+    let angle = hash(seed) * TAU;
+    let distance = 22.0 + hash(seed + 13.7) * (160.0 + particle.energy * 180.0);
+    particle.position = center + vec2f(cos(angle), sin(angle)) * distance;
+    particle.velocity = vec2f(cos(angle + 1.57), sin(angle + 1.57)) *
+      (18.0 + particle.energy * 78.0);
+    particle.age = hash(seed + 31.3) * particle.life * 0.18;
+    particle.color.a = max(particle.color.a, 0.42 + particle.energy * 0.28);
   }
 
   particles[index] = particle;

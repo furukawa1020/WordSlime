@@ -2,6 +2,7 @@ import type { AppSettings, SimulationMode } from "../../app/settings";
 import type { WordSeed } from "../../app/state";
 import { configureCanvas, createWebGpuDevice, type WebGpuDevice } from "./device";
 import backgroundRenderShader from "./shaders/backgroundRender.wgsl?raw";
+import particleHaloRenderShader from "./shaders/particleHaloRender.wgsl?raw";
 import particleRenderShader from "./shaders/particleRender.wgsl?raw";
 import particleUpdateShader from "./shaders/particleUpdate.wgsl?raw";
 
@@ -56,7 +57,7 @@ export async function createParticleRenderer(
 }
 
 class WebGpuParticleRenderer implements ParticleRenderer {
-  private readonly maxParticles = 60000;
+  private readonly maxParticles = 120000;
   private readonly particles = new Float32Array(
     this.maxParticles * PARTICLE_STRIDE_FLOATS,
   );
@@ -64,9 +65,11 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly paramsBuffer: GPUBuffer;
   private readonly computePipeline: GPUComputePipeline;
   private readonly backgroundPipeline: GPURenderPipeline;
+  private readonly haloPipeline: GPURenderPipeline;
   private readonly renderPipeline: GPURenderPipeline;
   private readonly computeBindGroup: GPUBindGroup;
   private readonly backgroundBindGroup: GPUBindGroup;
+  private readonly haloBindGroup: GPUBindGroup;
   private readonly renderBindGroup: GPUBindGroup;
   private readonly params = new Float32Array(PARAM_FLOATS);
   private pointer: PointerState = {
@@ -100,6 +103,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     const backgroundModule = gpu.device.createShaderModule({
       label: "background flow shader",
       code: backgroundRenderShader,
+    });
+    const haloModule = gpu.device.createShaderModule({
+      label: "particle halo shader",
+      code: particleHaloRenderShader,
     });
     const renderModule = gpu.device.createShaderModule({
       label: "particle render shader",
@@ -135,6 +142,38 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         module: backgroundModule,
         entryPoint: "fs_main",
         targets: [{ format: gpu.format }],
+      },
+      primitive: {
+        topology: "triangle-list",
+      },
+    });
+    this.haloPipeline = gpu.device.createRenderPipeline({
+      label: "particle halo pipeline",
+      layout: "auto",
+      vertex: {
+        module: haloModule,
+        entryPoint: "vs_main",
+      },
+      fragment: {
+        module: haloModule,
+        entryPoint: "fs_main",
+        targets: [
+          {
+            format: gpu.format,
+            blend: {
+              color: {
+                srcFactor: "src-alpha",
+                dstFactor: "one",
+                operation: "add",
+              },
+              alpha: {
+                srcFactor: "one",
+                dstFactor: "one-minus-src-alpha",
+                operation: "add",
+              },
+            },
+          },
+        ],
       },
       primitive: {
         topology: "triangle-list",
@@ -186,6 +225,14 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       layout: this.backgroundPipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: this.paramsBuffer } },
+      ],
+    });
+    this.haloBindGroup = gpu.device.createBindGroup({
+      label: "particle halo bind group",
+      layout: this.haloPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.particleBuffer } },
+        { binding: 1, resource: { buffer: this.paramsBuffer } },
       ],
     });
     this.renderBindGroup = gpu.device.createBindGroup({
@@ -354,6 +401,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     renderPass.draw(3);
 
     if (renderCount > 0) {
+      renderPass.setPipeline(this.haloPipeline);
+      renderPass.setBindGroup(0, this.haloBindGroup);
+      renderPass.draw(renderCount * 6);
+
       renderPass.setPipeline(this.renderPipeline);
       renderPass.setBindGroup(0, this.renderBindGroup);
       renderPass.draw(renderCount * 6);

@@ -114,13 +114,21 @@ export function particleCountForFeatures(
   features: TextFeatures,
   multiplier = 1,
 ): number {
+  const punctuationBursts =
+    features.exclamationCount * 42 +
+    features.questionCount * 36 +
+    features.ellipsisCount * 28;
   const count =
-    24 +
-    features.length * 8 +
-    features.repeatRatio * 120 +
-    features.emojiRatio * 80;
+    56 +
+    features.length * 18 +
+    features.repeatRatio * 520 +
+    features.punctuationRatio * 280 +
+    features.emojiRatio * 920 +
+    features.digitRatio * 360 +
+    features.rhythmVariance * 380 +
+    punctuationBursts;
 
-  return Math.round(clamp(count * multiplier, 24, 1200 * multiplier));
+  return Math.round(clamp(count * multiplier, 48, 3600 * multiplier));
 }
 
 function normalizeGenome(genome: SlimeGenome): SlimeGenome {

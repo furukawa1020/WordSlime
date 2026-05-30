@@ -1,6 +1,7 @@
 import type { AppSettings, SimulationMode } from "../../app/settings";
 import type { WordSeed } from "../../app/state";
 import { configureCanvas, createWebGpuDevice, type WebGpuDevice } from "./device";
+import backgroundRenderShader from "./shaders/backgroundRender.wgsl?raw";
 import particleRenderShader from "./shaders/particleRender.wgsl?raw";
 import particleUpdateShader from "./shaders/particleUpdate.wgsl?raw";
 
@@ -39,6 +40,13 @@ const modeValues: Record<SimulationMode, number> = {
   glitch: 4,
 };
 
+const backgroundValues: Record<AppSettings["background"], number> = {
+  dark: 0,
+  milk: 1,
+  "deep-sea": 2,
+  paper: 3,
+};
+
 export async function createParticleRenderer(
   canvas: HTMLCanvasElement,
   settings: AppSettings,
@@ -48,15 +56,17 @@ export async function createParticleRenderer(
 }
 
 class WebGpuParticleRenderer implements ParticleRenderer {
-  private readonly maxParticles = 10000;
+  private readonly maxParticles = 60000;
   private readonly particles = new Float32Array(
     this.maxParticles * PARTICLE_STRIDE_FLOATS,
   );
   private readonly particleBuffer: GPUBuffer;
   private readonly paramsBuffer: GPUBuffer;
   private readonly computePipeline: GPUComputePipeline;
+  private readonly backgroundPipeline: GPURenderPipeline;
   private readonly renderPipeline: GPURenderPipeline;
   private readonly computeBindGroup: GPUBindGroup;
+  private readonly backgroundBindGroup: GPUBindGroup;
   private readonly renderBindGroup: GPUBindGroup;
   private readonly params = new Float32Array(PARAM_FLOATS);
   private pointer: PointerState = {
@@ -87,6 +97,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       label: "particle update shader",
       code: particleUpdateShader,
     });
+    const backgroundModule = gpu.device.createShaderModule({
+      label: "background flow shader",
+      code: backgroundRenderShader,
+    });
     const renderModule = gpu.device.createShaderModule({
       label: "particle render shader",
       code: particleRenderShader,
@@ -108,6 +122,22 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       compute: {
         module: updateModule,
         entryPoint: "main",
+      },
+    });
+    this.backgroundPipeline = gpu.device.createRenderPipeline({
+      label: "background flow pipeline",
+      layout: "auto",
+      vertex: {
+        module: backgroundModule,
+        entryPoint: "vs_main",
+      },
+      fragment: {
+        module: backgroundModule,
+        entryPoint: "fs_main",
+        targets: [{ format: gpu.format }],
+      },
+      primitive: {
+        topology: "triangle-list",
       },
     });
     this.renderPipeline = gpu.device.createRenderPipeline({
@@ -149,6 +179,13 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       entries: [
         { binding: 0, resource: { buffer: this.particleBuffer } },
         { binding: 1, resource: { buffer: this.paramsBuffer } },
+      ],
+    });
+    this.backgroundBindGroup = gpu.device.createBindGroup({
+      label: "background flow bind group",
+      layout: this.backgroundPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.paramsBuffer } },
       ],
     });
     this.renderBindGroup = gpu.device.createBindGroup({
@@ -312,6 +349,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       ],
     });
 
+    renderPass.setPipeline(this.backgroundPipeline);
+    renderPass.setBindGroup(0, this.backgroundBindGroup);
+    renderPass.draw(3);
+
     if (renderCount > 0) {
       renderPass.setPipeline(this.renderPipeline);
       renderPass.setBindGroup(0, this.renderBindGroup);
@@ -334,7 +375,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.params[8] = modeValues[this.settings.mode];
     this.params[9] = this.settings.reduceMotion ? 1 : 0;
     this.params[10] = this.renderCount();
-    this.params[11] = 0;
+    this.params[11] = backgroundValues[this.settings.background];
     this.params[12] = this.pointer.pulse;
     this.params[13] = this.pointer.vortex;
     this.params[14] = this.pointer.dragX;

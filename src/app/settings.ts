@@ -99,17 +99,17 @@ export const qualityLabels: Record<ParticleQuality, string> = {
 };
 
 export const qualityParticleMultipliers: Record<ParticleQuality, number> = {
-  low: 0.45,
-  medium: 1.2,
-  high: 3,
-  insane: 8,
+  low: 0.55,
+  medium: 1.6,
+  high: 5,
+  insane: 16,
 };
 
 export const qualityParticleBudgets: Record<ParticleQuality, number> = {
-  low: 2000,
-  medium: 9000,
-  high: 30000,
-  insane: 60000,
+  low: 2500,
+  medium: 12000,
+  high: 48000,
+  insane: 120000,
 };
 
 export const backgroundLabels: Record<BackgroundMode, string> = {

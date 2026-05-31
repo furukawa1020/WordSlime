@@ -5,6 +5,8 @@ import backgroundRenderShader from "./shaders/backgroundRender.wgsl?raw";
 import particleHaloRenderShader from "./shaders/particleHaloRender.wgsl?raw";
 import particleRenderShader from "./shaders/particleRender.wgsl?raw";
 import particleUpdateShader from "./shaders/particleUpdate.wgsl?raw";
+import trailCompositeShader from "./shaders/trailComposite.wgsl?raw";
+import trailFeedbackShader from "./shaders/trailFeedback.wgsl?raw";
 
 type PointerState = {
   x: number;
@@ -63,14 +65,21 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   );
   private readonly particleBuffer: GPUBuffer;
   private readonly paramsBuffer: GPUBuffer;
+  private readonly trailSampler: GPUSampler;
   private readonly computePipeline: GPUComputePipeline;
   private readonly backgroundPipeline: GPURenderPipeline;
+  private readonly trailFeedbackPipeline: GPURenderPipeline;
+  private readonly trailCompositePipeline: GPURenderPipeline;
   private readonly haloPipeline: GPURenderPipeline;
   private readonly renderPipeline: GPURenderPipeline;
   private readonly computeBindGroup: GPUBindGroup;
   private readonly backgroundBindGroup: GPUBindGroup;
   private readonly haloBindGroup: GPUBindGroup;
   private readonly renderBindGroup: GPUBindGroup;
+  private trailTextures: GPUTexture[] = [];
+  private trailViews: GPUTextureView[] = [];
+  private trailFeedbackBindGroups: GPUBindGroup[] = [];
+  private trailCompositeBindGroups: GPUBindGroup[] = [];
   private readonly params = new Float32Array(PARAM_FLOATS);
   private pointer: PointerState = {
     x: 0,
@@ -90,6 +99,8 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private frameHandle = 0;
   private lastTime = performance.now();
   private readonly startedAt = performance.now();
+  private trailReadIndex = 0;
+  private trailNeedsClear = true;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -112,6 +123,14 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       label: "particle render shader",
       code: particleRenderShader,
     });
+    const trailFeedbackModule = gpu.device.createShaderModule({
+      label: "trail feedback shader",
+      code: trailFeedbackShader,
+    });
+    const trailCompositeModule = gpu.device.createShaderModule({
+      label: "trail composite shader",
+      code: trailCompositeShader,
+    });
 
     this.particleBuffer = gpu.device.createBuffer({
       label: "particle buffer",
@@ -122,6 +141,13 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       label: "simulation params",
       size: PARAM_FLOATS * Float32Array.BYTES_PER_ELEMENT,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.trailSampler = gpu.device.createSampler({
+      label: "trail sampler",
+      addressModeU: "clamp-to-edge",
+      addressModeV: "clamp-to-edge",
+      magFilter: "linear",
+      minFilter: "linear",
     });
     this.computePipeline = gpu.device.createComputePipeline({
       label: "particle update pipeline",
@@ -142,6 +168,54 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         module: backgroundModule,
         entryPoint: "fs_main",
         targets: [{ format: gpu.format }],
+      },
+      primitive: {
+        topology: "triangle-list",
+      },
+    });
+    this.trailFeedbackPipeline = gpu.device.createRenderPipeline({
+      label: "trail feedback pipeline",
+      layout: "auto",
+      vertex: {
+        module: trailFeedbackModule,
+        entryPoint: "vs_main",
+      },
+      fragment: {
+        module: trailFeedbackModule,
+        entryPoint: "fs_main",
+        targets: [{ format: gpu.format }],
+      },
+      primitive: {
+        topology: "triangle-list",
+      },
+    });
+    this.trailCompositePipeline = gpu.device.createRenderPipeline({
+      label: "trail composite pipeline",
+      layout: "auto",
+      vertex: {
+        module: trailCompositeModule,
+        entryPoint: "vs_main",
+      },
+      fragment: {
+        module: trailCompositeModule,
+        entryPoint: "fs_main",
+        targets: [
+          {
+            format: gpu.format,
+            blend: {
+              color: {
+                srcFactor: "one",
+                dstFactor: "one",
+                operation: "add",
+              },
+              alpha: {
+                srcFactor: "one",
+                dstFactor: "one-minus-src-alpha",
+                operation: "add",
+              },
+            },
+          },
+        ],
       },
       primitive: {
         topology: "triangle-list",
@@ -243,6 +317,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         { binding: 1, resource: { buffer: this.paramsBuffer } },
       ],
     });
+    this.createTrailTargets();
 
     void gpu.lost.then((info) => {
       this.stop();
@@ -305,6 +380,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.activeCount = 0;
     this.nextIndex = 0;
     this.particles.fill(0);
+    this.trailNeedsClear = true;
   }
 
   setParticleBudget(maxParticles: number): void {
@@ -330,6 +406,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
 
   resize(): void {
     configureCanvas(this.gpu.context, this.gpu.device, this.gpu.format);
+    this.createTrailTargets();
   }
 
   onDeviceLost(callback: (info: GPUDeviceLostInfo) => void): void {
@@ -383,6 +460,38 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       computePass.end();
     }
 
+    const readTrailIndex = this.trailReadIndex;
+    const writeTrailIndex = 1 - readTrailIndex;
+    const trailPass = encoder.beginRenderPass({
+      label: "trail accumulation pass",
+      colorAttachments: [
+        {
+          view: this.trailViews[writeTrailIndex],
+          clearValue: { r: 0, g: 0, b: 0, a: 0 },
+          loadOp: "clear",
+          storeOp: "store",
+        },
+      ],
+    });
+
+    if (!this.trailNeedsClear) {
+      trailPass.setPipeline(this.trailFeedbackPipeline);
+      trailPass.setBindGroup(0, this.trailFeedbackBindGroups[readTrailIndex]);
+      trailPass.draw(3);
+    }
+
+    if (renderCount > 0) {
+      trailPass.setPipeline(this.haloPipeline);
+      trailPass.setBindGroup(0, this.haloBindGroup);
+      trailPass.draw(renderCount * 6);
+
+      trailPass.setPipeline(this.renderPipeline);
+      trailPass.setBindGroup(0, this.renderBindGroup);
+      trailPass.draw(renderCount * 6);
+    }
+
+    trailPass.end();
+
     const view = this.gpu.context.getCurrentTexture().createView();
     const renderPass = encoder.beginRenderPass({
       label: "particle render pass",
@@ -400,18 +509,14 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     renderPass.setBindGroup(0, this.backgroundBindGroup);
     renderPass.draw(3);
 
-    if (renderCount > 0) {
-      renderPass.setPipeline(this.haloPipeline);
-      renderPass.setBindGroup(0, this.haloBindGroup);
-      renderPass.draw(renderCount * 6);
-
-      renderPass.setPipeline(this.renderPipeline);
-      renderPass.setBindGroup(0, this.renderBindGroup);
-      renderPass.draw(renderCount * 6);
-    }
+    renderPass.setPipeline(this.trailCompositePipeline);
+    renderPass.setBindGroup(0, this.trailCompositeBindGroups[writeTrailIndex]);
+    renderPass.draw(3);
 
     renderPass.end();
     this.gpu.device.queue.submit([encoder.finish()]);
+    this.trailReadIndex = writeTrailIndex;
+    this.trailNeedsClear = false;
   }
 
   private writeParams(dt: number, time: number): void {
@@ -442,6 +547,50 @@ class WebGpuParticleRenderer implements ParticleRenderer {
 
   private renderCount(): number {
     return Math.min(this.activeCount, this.activeBudget);
+  }
+
+  private createTrailTargets(): void {
+    for (const texture of this.trailTextures) {
+      texture.destroy();
+    }
+
+    const size = {
+      width: Math.max(1, this.canvas.width),
+      height: Math.max(1, this.canvas.height),
+    };
+
+    this.trailTextures = [0, 1].map((index) =>
+      this.gpu.device.createTexture({
+        label: `trail texture ${index}`,
+        size,
+        format: this.gpu.format,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+      }),
+    );
+    this.trailViews = this.trailTextures.map((texture) => texture.createView());
+    this.trailFeedbackBindGroups = this.trailViews.map((view) =>
+      this.gpu.device.createBindGroup({
+        label: "trail feedback bind group",
+        layout: this.trailFeedbackPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: this.trailSampler },
+          { binding: 1, resource: view },
+          { binding: 2, resource: { buffer: this.paramsBuffer } },
+        ],
+      }),
+    );
+    this.trailCompositeBindGroups = this.trailViews.map((view) =>
+      this.gpu.device.createBindGroup({
+        label: "trail composite bind group",
+        layout: this.trailCompositePipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: this.trailSampler },
+          { binding: 1, resource: view },
+        ],
+      }),
+    );
+    this.trailReadIndex = 0;
+    this.trailNeedsClear = true;
   }
 }
 

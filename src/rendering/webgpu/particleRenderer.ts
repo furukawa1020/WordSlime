@@ -204,7 +204,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
             format: gpu.format,
             blend: {
               color: {
-                srcFactor: "one",
+                srcFactor: "src-alpha",
                 dstFactor: "one",
                 operation: "add",
               },
@@ -337,15 +337,16 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       const unit = count <= 1 ? 0 : offset / (count - 1);
       const spawn = createParticleSpawn(seed, profile, unit, random);
       const radius = 1.8 + seed.genome.viscosity * 3.8 + random() * 2.4;
+      const particleColor = varyParticleColor(color, seed, random);
 
       this.particles[base + 0] = spawn.x;
       this.particles[base + 1] = spawn.y;
       this.particles[base + 2] = spawn.vx;
       this.particles[base + 3] = spawn.vy;
-      this.particles[base + 4] = color[0];
-      this.particles[base + 5] = color[1];
-      this.particles[base + 6] = color[2];
-      this.particles[base + 7] = color[3];
+      this.particles[base + 4] = particleColor[0];
+      this.particles[base + 5] = particleColor[1];
+      this.particles[base + 6] = particleColor[2];
+      this.particles[base + 7] = particleColor[3];
       this.particles[base + 8] = 0;
       this.particles[base + 9] = 10 + seed.genome.decay * 26 + random() * 18;
       this.particles[base + 10] = radius;
@@ -788,7 +789,25 @@ function colorForSeed(seed: WordSeed): [number, number, number, number] {
     Math.min(1, red * brightness),
     Math.min(1, green * brightness),
     Math.min(1, blue * brightness),
-    0.52 + seed.genome.brightness * 0.36,
+    0.38 + seed.genome.brightness * 0.28,
+  ];
+}
+
+function varyParticleColor(
+  baseColor: [number, number, number, number],
+  seed: WordSeed,
+  random: () => number,
+): [number, number, number, number] {
+  const accent = random();
+  const chroma = 0.08 + seed.genome.turbulence * 0.14 + seed.genome.energy * 0.08;
+  const warmth = accent < 0.34 ? chroma : 0;
+  const bloom = accent > 0.68 ? chroma : 0;
+
+  return [
+    Math.min(1, baseColor[0] * (0.72 + random() * 0.24) + warmth * 0.8),
+    Math.min(1, baseColor[1] * (0.76 + random() * 0.22) + chroma * 0.28),
+    Math.min(1, baseColor[2] * (0.78 + random() * 0.24) + bloom),
+    baseColor[3] * (0.72 + random() * 0.24),
   ];
 }
 

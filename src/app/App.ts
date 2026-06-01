@@ -662,13 +662,13 @@ function startPerformanceMonitor(options: PerformanceMonitorOptions): () => void
       frames = 0;
       last = now;
 
-      if (!options.state.isPaused && fps > 0 && fps < 38) {
+      if (!options.state.isPaused && fps > 0 && fps < 26) {
         lowFpsSamples += 1;
       } else {
         lowFpsSamples = 0;
       }
 
-      if (lowFpsSamples >= 3) {
+      if (lowFpsSamples >= 5) {
         lowFpsSamples = 0;
         degradeQuality(options, qualityOrder);
       }

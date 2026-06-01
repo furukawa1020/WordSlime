@@ -81,5 +81,6 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   }
 
   let alpha = input.color.a * (glow * 0.22 + smoke) * old_fade;
-  return vec4f(tint * (0.68 + input.energy * 0.54), alpha);
+  let density_fade = mix(1.0, 0.24, smoothstep(12000.0, 72000.0, params.behavior.z));
+  return vec4f(tint * (0.54 + input.energy * 0.34), alpha * density_fade);
 }

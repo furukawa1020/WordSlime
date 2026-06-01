@@ -68,7 +68,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
 
   let sample_uv = clamp(uv, vec2f(0.001), vec2f(0.999));
   let sample = textureSample(trail_texture, trail_sampler, sample_uv);
-  let fade = mix(0.944, 0.875, reduce_motion);
+  let fade = mix(0.918, 0.852, reduce_motion);
   let color = sample.rgb * fade;
   let alpha = sample.a * fade;
 

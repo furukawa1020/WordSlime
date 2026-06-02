@@ -117,6 +117,35 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let fine = fbm(flow * 17.0 - time * 0.06);
   let band = pow(1.0 - abs(sin((flow.x + flow.y) * 14.0 + time * 0.46)), 7.0);
   var shade = cellular * 0.75 + fine * 0.18 + band * 0.18;
+  var mode_tint = vec3f(0.0);
+
+  if (mode > 0.5 && mode < 1.5) {
+    let orbit = abs(length(centered) - 0.28);
+    let arc = pow(1.0 - min(orbit / 0.16, 1.0), 3.0);
+    let sparks = step(0.965, hash(floor((uv + time * 0.015) * 44.0)));
+    shade += arc * 0.18 + sparks * 0.16;
+    mode_tint += vec3f(0.16, 0.11, 0.02) * arc + vec3f(0.05, 0.1, 0.14) * sparks;
+  } else if (mode > 1.5 && mode < 2.5) {
+    let plume = pow(1.0 - abs(uv.x - 0.5) / 0.42, 2.0) *
+      smoothstep(1.0, 0.2, uv.y);
+    let fog = fbm(vec2f(uv.x * 5.0 + time * 0.06, uv.y * 9.0 - time * 0.12));
+    shade += plume * fog * 0.34;
+    mode_tint += vec3f(0.08, 0.1, 0.16) * plume;
+  } else if (mode > 2.5 && mode < 3.5) {
+    let veins = pow(
+      1.0 - abs(sin(atan2(centered.y, centered.x) * 7.0 + length(centered) * 21.0 - time * 0.42)),
+      8.0
+    );
+    let roots = veins * smoothstep(0.62, 0.08, length(centered - vec2f(0.0, 0.18)));
+    shade += roots * 0.32;
+    mode_tint += vec3f(0.05, 0.16, 0.04) * roots;
+  } else if (mode > 3.5) {
+    let grid = step(0.965, fract(uv.x * 18.0 + time * 1.1)) +
+      step(0.972, fract(uv.y * 11.0 - time * 0.9));
+    let blocks = step(0.74, hash(floor(uv * vec2f(22.0, 13.0) + time * 5.0)));
+    shade += grid * 0.13 + blocks * 0.1;
+    mode_tint += vec3f(0.1, 0.03, 0.14) * grid + vec3f(0.0, 0.13, 0.15) * blocks;
+  }
 
   if (pointer_active > 0.5) {
     let pressure = exp(-pointer_dist * mix(9.0, 5.8, pointer_down));
@@ -137,7 +166,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let vignette = smoothstep(0.88, 0.16, length(centered));
   let base = palette(background, clamp(shade, 0.0, 1.0));
   let glow = vec3f(0.36, 0.85, 0.76) * band * 0.035;
-  let color = base * (0.76 + vignette * 0.24) + glow;
+  let color = base * (0.76 + vignette * 0.24) + glow + mode_tint;
 
   return vec4f(color, 1.0);
 }

@@ -79,19 +79,19 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
 
   if (mode > 3.5) {
     tint = mix(tint, vec3f(0.96, 0.42, 0.86), 0.34);
-    halo_scale = 0.64;
+    halo_scale = 0.34;
   } else if (mode > 2.5 && mode < 3.5) {
     tint = mix(tint, vec3f(0.56, 0.95, 0.64), 0.24);
-    halo_scale = 0.82;
+    halo_scale = 0.36;
   } else if (mode > 1.5 && mode < 2.5) {
     tint = mix(tint, vec3f(0.62, 0.86, 1.0), 0.2);
-    halo_scale = 1.35;
+    halo_scale = 0.5;
   } else if (mode > 0.5 && mode < 1.5) {
     tint = mix(tint, vec3f(1.0, 0.78, 0.24), 0.2);
-    halo_scale = 0.55;
+    halo_scale = 0.32;
   }
 
   let alpha = input.color.a * (glow * 0.08 + smoke * 0.34) * old_fade;
-  let density_fade = mix(1.0, 0.06, smoothstep(12000.0, 72000.0, params.behavior.z));
+  let density_fade = mix(0.55, 0.035, smoothstep(3000.0, 52000.0, params.behavior.z));
   return vec4f(tint * (0.54 + input.energy * 0.34), alpha * density_fade * halo_scale);
 }

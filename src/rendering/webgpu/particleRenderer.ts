@@ -34,6 +34,7 @@ const PARTICLE_STRIDE_FLOATS = 12;
 const PARTICLE_STRIDE_BYTES = PARTICLE_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const PARAM_FLOATS = 16;
 const WORKGROUP_SIZE = 64;
+const TAU = Math.PI * 2;
 
 const modeValues: Record<SimulationMode, number> = {
   slime: 0,
@@ -335,9 +336,21 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       const particleIndex = (this.nextIndex + offset) % this.maxParticles;
       const base = particleIndex * PARTICLE_STRIDE_FLOATS;
       const unit = count <= 1 ? 0 : offset / (count - 1);
-      const spawn = createParticleSpawn(seed, profile, unit, random);
-      const radius = 1.8 + seed.genome.viscosity * 3.8 + random() * 2.4;
-      const particleColor = varyParticleColor(color, seed, random);
+      const spawn = createParticleSpawn(
+        seed,
+        this.settings.mode,
+        profile,
+        unit,
+        random,
+        { width: this.canvas.width, height: this.canvas.height },
+      );
+      const radius = radiusForMode(seed, this.settings.mode, random);
+      const particleColor = varyParticleColor(
+        color,
+        seed,
+        this.settings.mode,
+        random,
+      );
 
       this.particles[base + 0] = spawn.x;
       this.particles[base + 1] = spawn.y;
@@ -633,14 +646,83 @@ function createSpawnProfile(seed: WordSeed): SpawnProfile {
 
 function createParticleSpawn(
   seed: WordSeed,
+  mode: SimulationMode,
   profile: SpawnProfile,
   unit: number,
   random: () => number,
+  size: { width: number; height: number },
 ): ParticleSpawn {
   const center = seed.origin;
   const jitter = () => random() * 2 - 1;
   const angle = random() * Math.PI * 2;
   const energySpeed = 24 + seed.genome.energy * 126;
+
+  if (mode === "swarm") {
+    const orbitAngle = unit * TAU * 9.0 + random() * 0.35;
+    const minSize = Math.min(size.width, size.height);
+    const ring = minSize * (0.14 + random() * 0.26);
+    const tangent = orbitAngle + Math.PI * 0.5;
+
+    return {
+      x: center.x + Math.cos(orbitAngle) * ring + jitter() * 18,
+      y: center.y + Math.sin(orbitAngle) * ring * 0.72 + jitter() * 18,
+      vx: Math.cos(tangent) * (90 + seed.genome.energy * 140),
+      vy: Math.sin(tangent) * (90 + seed.genome.energy * 140),
+    };
+  }
+
+  if (mode === "smoke") {
+    const plumeWidth = Math.min(size.width * 0.42, 420);
+    const lift = 82 + seed.genome.energy * 140 + random() * 80;
+
+    return {
+      x: center.x + jitter() * plumeWidth,
+      y: size.height * (0.72 + random() * 0.16),
+      vx: jitter() * (24 + seed.genome.turbulence * 80),
+      vy: -lift,
+    };
+  }
+
+  if (mode === "fungus") {
+    const branchCount = 7;
+    const branch = Math.floor(unit * branchCount);
+    const branchUnit = unit * branchCount - branch;
+    const branchAngle =
+      -Math.PI * 0.78 + (branch / Math.max(1, branchCount - 1)) * Math.PI * 1.56;
+    const curl = Math.sin(branchUnit * Math.PI * 3.0 + branch) * 0.32;
+    const distance =
+      36 + branchUnit * Math.min(size.width, size.height) * 0.34 +
+      random() * 28;
+    const base = {
+      x: center.x,
+      y: size.height * 0.72,
+    };
+    const angle = branchAngle + curl;
+
+    return {
+      x: base.x + Math.cos(angle) * distance + jitter() * 14,
+      y: base.y + Math.sin(angle) * distance * 0.9 + jitter() * 14,
+      vx: Math.cos(angle) * (28 + seed.genome.fertility * 110),
+      vy: Math.sin(angle) * (28 + seed.genome.fertility * 110) - 12,
+    };
+  }
+
+  if (mode === "glitch") {
+    const columns = 18;
+    const rows = 10;
+    const column = Math.floor(random() * columns);
+    const row = Math.floor((unit * rows * 3 + random() * rows) % rows);
+    const cellWidth = size.width / columns;
+    const cellHeight = size.height / rows;
+    const direction = random() > 0.5 ? 1 : -1;
+
+    return {
+      x: column * cellWidth + random() * cellWidth,
+      y: row * cellHeight + cellHeight * (0.35 + random() * 0.3),
+      vx: direction * (120 + seed.genome.noiseScale * 260 + random() * 120),
+      vy: jitter() * 38,
+    };
+  }
 
   if (profile === "burst") {
     const spread = 4 + random() * 16;
@@ -758,6 +840,32 @@ function createParticleSpawn(
   };
 }
 
+function radiusForMode(
+  seed: WordSeed,
+  mode: SimulationMode,
+  random: () => number,
+): number {
+  const base = 1.8 + seed.genome.viscosity * 3.8 + random() * 2.4;
+
+  if (mode === "swarm") {
+    return Math.max(1.1, base * (0.48 + random() * 0.24));
+  }
+
+  if (mode === "smoke") {
+    return base * (1.35 + random() * 0.75);
+  }
+
+  if (mode === "fungus") {
+    return base * (0.7 + seed.genome.fertility * 0.55 + random() * 0.18);
+  }
+
+  if (mode === "glitch") {
+    return base * (0.58 + random() * 0.42);
+  }
+
+  return base;
+}
+
 function contiguousWriteBytes(
   startIndex: number,
   count: number,
@@ -796,18 +904,35 @@ function colorForSeed(seed: WordSeed): [number, number, number, number] {
 function varyParticleColor(
   baseColor: [number, number, number, number],
   seed: WordSeed,
+  mode: SimulationMode,
   random: () => number,
 ): [number, number, number, number] {
   const accent = random();
   const chroma = 0.08 + seed.genome.turbulence * 0.14 + seed.genome.energy * 0.08;
   const warmth = accent < 0.34 ? chroma : 0;
   const bloom = accent > 0.68 ? chroma : 0;
+  let modeTint: [number, number, number] = [0, 0, 0];
+  let alphaScale = 1;
+
+  if (mode === "swarm") {
+    modeTint = accent > 0.5 ? [0.55, 0.36, 0.02] : [0.03, 0.24, 0.42];
+    alphaScale = 0.9;
+  } else if (mode === "smoke") {
+    modeTint = [0.18, 0.2, 0.32];
+    alphaScale = 0.42;
+  } else if (mode === "fungus") {
+    modeTint = accent > 0.72 ? [0.42, 0.02, 0.32] : [0.04, 0.36, 0.08];
+    alphaScale = 0.82;
+  } else if (mode === "glitch") {
+    modeTint = accent > 0.5 ? [0.68, 0.02, 0.48] : [0.02, 0.56, 0.7];
+    alphaScale = 0.78;
+  }
 
   return [
-    Math.min(1, baseColor[0] * (0.72 + random() * 0.24) + warmth * 0.8),
-    Math.min(1, baseColor[1] * (0.76 + random() * 0.22) + chroma * 0.28),
-    Math.min(1, baseColor[2] * (0.78 + random() * 0.24) + bloom),
-    baseColor[3] * (0.72 + random() * 0.24),
+    Math.min(1, baseColor[0] * (0.68 + random() * 0.22) + warmth * 0.8 + modeTint[0]),
+    Math.min(1, baseColor[1] * (0.7 + random() * 0.2) + chroma * 0.22 + modeTint[1]),
+    Math.min(1, baseColor[2] * (0.72 + random() * 0.2) + bloom + modeTint[2]),
+    baseColor[3] * (0.66 + random() * 0.22) * alphaScale,
   ];
 }
 

@@ -40,9 +40,33 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
   let particle_index = vertex_index / 6u;
   let corner = CORNERS[vertex_index % 6u];
   let particle = particles[particle_index];
+  let mode = params.behavior.x;
   let base_radius = max(particle.radius, 1.0);
-  let halo_radius = base_radius * (6.2 + particle.energy * 4.4);
-  let pixel_position = particle.position + corner * halo_radius;
+  let velocity_dir = normalize(particle.velocity + vec2f(0.01, 0.003));
+  let side_dir = vec2f(-velocity_dir.y, velocity_dir.x);
+  var x_scale = base_radius * (6.2 + particle.energy * 4.4);
+  var y_scale = x_scale;
+  var offset = corner * x_scale;
+
+  if (mode > 0.5 && mode < 1.5) {
+    x_scale = base_radius * (2.1 + particle.energy * 1.2);
+    y_scale = x_scale;
+    offset = corner * x_scale;
+  } else if (mode > 1.5 && mode < 2.5) {
+    x_scale = base_radius * (15.0 + particle.energy * 9.0);
+    y_scale = base_radius * (4.0 + particle.energy * 2.6);
+    offset = side_dir * corner.x * x_scale + velocity_dir * corner.y * y_scale;
+  } else if (mode > 2.5 && mode < 3.5) {
+    x_scale = base_radius * 1.6;
+    y_scale = base_radius * (15.0 + particle.energy * 8.0);
+    offset = side_dir * corner.x * x_scale + velocity_dir * corner.y * y_scale;
+  } else if (mode > 3.5) {
+    x_scale = base_radius * (4.8 + particle.energy * 2.6);
+    y_scale = base_radius * (1.4 + particle.energy * 0.8);
+    offset = vec2f(corner.x * x_scale, corner.y * y_scale);
+  }
+
+  let pixel_position = particle.position + offset;
   let size = max(params.frame.zw, vec2f(1.0));
   let clip = vec2f(
     pixel_position.x / size.x * 2.0 - 1.0,

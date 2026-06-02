@@ -600,6 +600,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         entries: [
           { binding: 0, resource: this.trailSampler },
           { binding: 1, resource: view },
+          { binding: 2, resource: { buffer: this.paramsBuffer } },
         ],
       }),
     );

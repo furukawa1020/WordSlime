@@ -60,27 +60,38 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
 
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4f {
-  let dist = length(input.local);
+  let mode = params.behavior.x;
+  var dist = length(input.local);
+
+  if (mode > 3.5) {
+    dist = max(abs(input.local.x), abs(input.local.y));
+  }
 
   if (dist > 1.0) {
     discard;
   }
 
-  let mode = params.behavior.x;
   let glow = pow(1.0 - dist, 3.2);
   let smoke = pow(1.0 - dist, 1.55) * 0.18;
   let old_fade = mix(1.0, 0.22, smoothstep(0.62, 1.0, input.age_ratio));
   var tint = input.color.rgb * (0.82 + input.energy * 0.42);
+  var halo_scale = 1.0;
 
   if (mode > 3.5) {
     tint = mix(tint, vec3f(0.96, 0.42, 0.86), 0.34);
+    halo_scale = 0.64;
   } else if (mode > 2.5 && mode < 3.5) {
     tint = mix(tint, vec3f(0.56, 0.95, 0.64), 0.24);
+    halo_scale = 0.82;
   } else if (mode > 1.5 && mode < 2.5) {
     tint = mix(tint, vec3f(0.62, 0.86, 1.0), 0.2);
+    halo_scale = 1.35;
+  } else if (mode > 0.5 && mode < 1.5) {
+    tint = mix(tint, vec3f(1.0, 0.78, 0.24), 0.2);
+    halo_scale = 0.55;
   }
 
   let alpha = input.color.a * (glow * 0.08 + smoke * 0.34) * old_fade;
   let density_fade = mix(1.0, 0.06, smoothstep(12000.0, 72000.0, params.behavior.z));
-  return vec4f(tint * (0.54 + input.energy * 0.34), alpha * density_fade);
+  return vec4f(tint * (0.54 + input.energy * 0.34), alpha * density_fade * halo_scale);
 }

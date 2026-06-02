@@ -66,6 +66,17 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       qualityParticleBudgets[state.settings.particleQuality] * densityScale,
     );
   };
+  const repopulateRenderer = () => {
+    if (!renderer) {
+      return;
+    }
+
+    renderer.clear();
+
+    for (const seed of state.seeds) {
+      renderer.addSeed(seed);
+    }
+  };
   applyBackground(shell, state.settings.background);
   syncSettingsPanel(panel, state.settings);
   updateAudioToggle(audioButton, state.settings.audioMode);
@@ -114,6 +125,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       updateHud(hud, state);
       showToast(toast, modeLabels[state.settings.mode], 900);
     },
+    repopulateRenderer,
     (background) => {
       state.settings.background = background;
       applyBackground(shell, background);
@@ -159,6 +171,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     onModeSelect: (mode) => {
       state.settings.mode = mode;
       updatePressed(panel, "data-mode", mode);
+      repopulateRenderer();
       saveSettings(state.settings);
       updateHud(hud, state);
       showToast(toast, modeLabels[mode], 900);
@@ -741,6 +754,7 @@ function attachSettingsPanel(
   toggle: HTMLButtonElement,
   state: AppState,
   onChange: () => void,
+  onModeChange: () => void,
   onBackgroundChange: (background: AppState["settings"]["background"]) => void,
   onAudioModeChange: (mode: AudioMode) => Promise<void>,
 ): () => void {
@@ -771,6 +785,7 @@ function attachSettingsPanel(
     ) {
       state.settings.mode = mode;
       updatePressed(panel, "data-mode", mode);
+      onModeChange();
       onChange();
     }
 

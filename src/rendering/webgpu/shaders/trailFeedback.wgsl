@@ -72,9 +72,9 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   if (mode > 0.5 && mode < 1.5) {
     fade *= 0.94;
   } else if (mode > 1.5 && mode < 2.5) {
-    fade = max(fade, 0.955);
+    fade = max(fade, 0.918);
   } else if (mode > 2.5 && mode < 3.5) {
-    fade *= 0.985;
+    fade *= 0.94;
   } else if (mode > 3.5) {
     fade *= 0.72;
   }

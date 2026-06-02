@@ -673,7 +673,7 @@ function createParticleSpawn(
 
   if (mode === "smoke") {
     const plumeWidth = Math.min(size.width * 0.42, 420);
-    const lift = 82 + seed.genome.energy * 140 + random() * 80;
+    const lift = 34 + seed.genome.energy * 72 + random() * 42;
 
     return {
       x: center.x + jitter() * plumeWidth,
@@ -925,7 +925,7 @@ function varyParticleColor(
     red = 0.22 + random() * 0.12;
     green = 0.31 + random() * 0.16;
     blue = 0.46 + random() * 0.22;
-    alpha *= 0.24;
+    alpha *= 0.4;
   } else if (mode === "fungus") {
     red = accent > 0.78 ? 0.72 + random() * 0.18 : 0.14 + random() * 0.12;
     green = accent > 0.78 ? 0.2 + random() * 0.16 : 0.86 + random() * 0.12;

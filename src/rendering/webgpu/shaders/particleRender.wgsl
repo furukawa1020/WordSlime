@@ -95,7 +95,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     alpha *= 0.56;
     brightness += input.speed * 0.36;
   } else if (mode > 1.5 && mode < 2.5) {
-    alpha *= 0.26;
+    alpha *= 0.38;
     brightness *= 0.68;
   } else if (mode > 2.5 && mode < 3.5) {
     alpha *= 0.5;

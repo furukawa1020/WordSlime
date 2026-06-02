@@ -134,8 +134,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
       sin(time * 0.42 + particle.position.y * 0.012 + f32(index) * 0.01),
       -1.0
     );
-    flow += smoke_wave * (70.0 + particle.energy * 128.0);
-    flow += vec2f(0.0, -64.0 - particle.radius * 8.0);
+    flow += smoke_wave * (34.0 + particle.energy * 66.0);
+    flow += vec2f(0.0, -18.0 - particle.radius * 2.8);
     particle.velocity.x *= 0.988;
     particle.velocity.y *= 0.996;
   } else if (mode < 3.5) {
@@ -238,7 +238,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
       );
       particle.velocity = vec2f(
         (hash(seed + 9.1) - 0.5) * 48.0,
-        -86.0 - particle.energy * 120.0
+        -36.0 - particle.energy * 74.0
       );
     } else if (mode < 3.5) {
       let root = vec2f(size.x * 0.5, size.y * 0.76);

@@ -897,7 +897,7 @@ function colorForSeed(seed: WordSeed): [number, number, number, number] {
     Math.min(1, red * brightness),
     Math.min(1, green * brightness),
     Math.min(1, blue * brightness),
-    0.38 + seed.genome.brightness * 0.28,
+    0.26 + seed.genome.brightness * 0.2,
   ];
 }
 
@@ -911,28 +911,38 @@ function varyParticleColor(
   const chroma = 0.08 + seed.genome.turbulence * 0.14 + seed.genome.energy * 0.08;
   const warmth = accent < 0.34 ? chroma : 0;
   const bloom = accent > 0.68 ? chroma : 0;
-  let modeTint: [number, number, number] = [0, 0, 0];
-  let alphaScale = 1;
+  let red = baseColor[0] * (0.68 + random() * 0.22) + warmth * 0.35;
+  let green = baseColor[1] * (0.7 + random() * 0.2) + chroma * 0.12;
+  let blue = baseColor[2] * (0.72 + random() * 0.2) + bloom * 0.32;
+  let alpha = baseColor[3] * (0.58 + random() * 0.18);
 
   if (mode === "swarm") {
-    modeTint = accent > 0.5 ? [0.55, 0.36, 0.02] : [0.03, 0.24, 0.42];
-    alphaScale = 0.9;
+    red = accent > 0.5 ? 0.92 + random() * 0.08 : 0.12 + random() * 0.12;
+    green = accent > 0.5 ? 0.58 + random() * 0.18 : 0.72 + random() * 0.18;
+    blue = accent > 0.5 ? 0.16 + random() * 0.12 : 0.88 + random() * 0.1;
+    alpha *= 0.5;
   } else if (mode === "smoke") {
-    modeTint = [0.18, 0.2, 0.32];
-    alphaScale = 0.42;
+    red = 0.22 + random() * 0.12;
+    green = 0.31 + random() * 0.16;
+    blue = 0.46 + random() * 0.22;
+    alpha *= 0.24;
   } else if (mode === "fungus") {
-    modeTint = accent > 0.72 ? [0.42, 0.02, 0.32] : [0.04, 0.36, 0.08];
-    alphaScale = 0.82;
+    red = accent > 0.78 ? 0.72 + random() * 0.18 : 0.14 + random() * 0.12;
+    green = accent > 0.78 ? 0.2 + random() * 0.16 : 0.86 + random() * 0.12;
+    blue = accent > 0.78 ? 0.72 + random() * 0.18 : 0.22 + random() * 0.16;
+    alpha *= 0.48;
   } else if (mode === "glitch") {
-    modeTint = accent > 0.5 ? [0.68, 0.02, 0.48] : [0.02, 0.56, 0.7];
-    alphaScale = 0.78;
+    red = accent > 0.5 ? 0.96 : 0.04 + random() * 0.12;
+    green = accent > 0.5 ? 0.14 + random() * 0.14 : 0.92 + random() * 0.08;
+    blue = accent > 0.5 ? 0.82 + random() * 0.16 : 0.96;
+    alpha *= 0.42;
   }
 
   return [
-    Math.min(1, baseColor[0] * (0.68 + random() * 0.22) + warmth * 0.8 + modeTint[0]),
-    Math.min(1, baseColor[1] * (0.7 + random() * 0.2) + chroma * 0.22 + modeTint[1]),
-    Math.min(1, baseColor[2] * (0.72 + random() * 0.2) + bloom + modeTint[2]),
-    baseColor[3] * (0.66 + random() * 0.22) * alphaScale,
+    Math.min(1, red),
+    Math.min(1, green),
+    Math.min(1, blue),
+    alpha,
   ];
 }
 

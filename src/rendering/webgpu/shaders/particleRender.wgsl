@@ -87,21 +87,21 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   }
 
   let old_fade = mix(1.0, 0.34, smoothstep(0.68, 1.0, input.age_ratio));
-  let density_fade = mix(1.0, 0.08, smoothstep(12000.0, 72000.0, params.behavior.z));
+  let density_fade = mix(0.82, 0.055, smoothstep(3000.0, 52000.0, params.behavior.z));
   var alpha = input.color.a * (core + rim) * old_fade * density_fade;
   var brightness = 0.54 + core * 0.68 + hot * 0.42 + input.speed * 0.24;
 
   if (mode > 0.5 && mode < 1.5) {
-    alpha *= 0.68;
+    alpha *= 0.56;
     brightness += input.speed * 0.36;
   } else if (mode > 1.5 && mode < 2.5) {
-    alpha *= 0.54;
+    alpha *= 0.26;
     brightness *= 0.68;
   } else if (mode > 2.5 && mode < 3.5) {
-    alpha *= 0.82;
+    alpha *= 0.5;
     brightness += 0.12;
   } else if (mode > 3.5) {
-    alpha *= 0.74;
+    alpha *= 0.42;
     brightness += 0.28;
   }
 

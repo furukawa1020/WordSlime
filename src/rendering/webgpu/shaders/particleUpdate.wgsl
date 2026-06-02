@@ -265,7 +265,13 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     }
 
     particle.age = hash(seed + 31.3) * particle.life * 0.18;
-    particle.color.a = max(particle.color.a, 0.42 + particle.energy * 0.28);
+    var restored_alpha = 0.42 + particle.energy * 0.28;
+    if (mode > 1.5 && mode < 2.5) {
+      restored_alpha = 0.16 + particle.energy * 0.16;
+    } else if (mode > 3.5) {
+      restored_alpha = 0.28 + particle.energy * 0.22;
+    }
+    particle.color.a = max(particle.color.a, restored_alpha);
   }
 
   particles[index] = particle;

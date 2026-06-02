@@ -61,19 +61,49 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
 
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4f {
-  let dist = length(input.local);
+  let mode = params.behavior.x;
+  var dist = length(input.local);
+
+  if (mode > 3.5) {
+    dist = max(abs(input.local.x), abs(input.local.y));
+  }
 
   if (dist > 1.0) {
     discard;
   }
 
-  let core = pow(1.0 - dist, 1.45);
-  let rim = pow(smoothstep(1.0, 0.42, dist), 2.6) * 0.28;
-  let hot = pow(1.0 - dist, 7.0) * (0.7 + input.energy * 0.72);
+  var core = pow(1.0 - dist, 1.45);
+  var rim = pow(smoothstep(1.0, 0.42, dist), 2.6) * 0.28;
+  var hot = pow(1.0 - dist, 7.0) * (0.7 + input.energy * 0.72);
+
+  if (mode > 1.5 && mode < 2.5) {
+    core = pow(1.0 - dist, 0.92) * 0.42;
+    rim = pow(smoothstep(1.0, 0.2, dist), 1.4) * 0.18;
+    hot *= 0.16;
+  } else if (mode > 3.5) {
+    core = pow(1.0 - dist, 0.8);
+    rim = step(0.78, dist) * 0.08;
+    hot = pow(1.0 - dist, 3.0) * (0.35 + input.speed * 0.55);
+  }
+
   let old_fade = mix(1.0, 0.34, smoothstep(0.68, 1.0, input.age_ratio));
   let density_fade = mix(1.0, 0.08, smoothstep(12000.0, 72000.0, params.behavior.z));
-  let alpha = input.color.a * (core + rim) * old_fade * density_fade;
-  let brightness = 0.54 + core * 0.68 + hot * 0.42 + input.speed * 0.24;
+  var alpha = input.color.a * (core + rim) * old_fade * density_fade;
+  var brightness = 0.54 + core * 0.68 + hot * 0.42 + input.speed * 0.24;
+
+  if (mode > 0.5 && mode < 1.5) {
+    alpha *= 0.68;
+    brightness += input.speed * 0.36;
+  } else if (mode > 1.5 && mode < 2.5) {
+    alpha *= 0.54;
+    brightness *= 0.68;
+  } else if (mode > 2.5 && mode < 3.5) {
+    alpha *= 0.82;
+    brightness += 0.12;
+  } else if (mode > 3.5) {
+    alpha *= 0.74;
+    brightness += 0.28;
+  }
 
   return vec4f(input.color.rgb * brightness, alpha);
 }

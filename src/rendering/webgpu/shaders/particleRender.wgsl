@@ -41,8 +41,33 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
   let particle_index = vertex_index / 6u;
   let corner = CORNERS[vertex_index % 6u];
   let particle = particles[particle_index];
+  let mode = params.behavior.x;
   let radius = max(particle.radius, 1.0);
-  let pixel_position = particle.position + corner * radius * 2.65;
+  let velocity_dir = normalize(particle.velocity + vec2f(0.01, 0.003));
+  let side_dir = vec2f(-velocity_dir.y, velocity_dir.x);
+  var x_scale = radius * 2.65;
+  var y_scale = radius * 2.65;
+  var offset = corner * x_scale;
+
+  if (mode > 0.5 && mode < 1.5) {
+    x_scale = radius * 0.95;
+    y_scale = radius * 0.95;
+    offset = corner * x_scale;
+  } else if (mode > 1.5 && mode < 2.5) {
+    x_scale = radius * (8.5 + particle.energy * 4.5);
+    y_scale = radius * (2.1 + particle.energy * 1.6);
+    offset = side_dir * corner.x * x_scale + velocity_dir * corner.y * y_scale;
+  } else if (mode > 2.5 && mode < 3.5) {
+    x_scale = radius * 0.62;
+    y_scale = radius * (9.5 + particle.energy * 7.0);
+    offset = side_dir * corner.x * x_scale + velocity_dir * corner.y * y_scale;
+  } else if (mode > 3.5) {
+    x_scale = radius * (2.4 + particle.energy * 1.5);
+    y_scale = radius * (0.72 + particle.energy * 0.48);
+    offset = vec2f(corner.x * x_scale, corner.y * y_scale);
+  }
+
+  let pixel_position = particle.position + offset;
   let size = max(params.frame.zw, vec2f(1.0));
   let clip = vec2f(
     pixel_position.x / size.x * 2.0 - 1.0,
@@ -66,6 +91,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
 
   if (mode > 3.5) {
     dist = max(abs(input.local.x), abs(input.local.y));
+  } else if (mode > 2.5 && mode < 3.5) {
+    dist = max(abs(input.local.x) * 1.8, abs(input.local.y) * 0.74);
+  } else if (mode > 1.5 && mode < 2.5) {
+    dist = length(input.local * vec2f(0.45, 1.05));
   }
 
   if (dist > 1.0) {
@@ -80,6 +109,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     core = pow(1.0 - dist, 0.92) * 0.42;
     rim = pow(smoothstep(1.0, 0.2, dist), 1.4) * 0.18;
     hot *= 0.16;
+  } else if (mode > 2.5 && mode < 3.5) {
+    core = pow(1.0 - dist, 1.15);
+    rim = pow(smoothstep(1.0, 0.58, dist), 4.0) * 0.18;
+    hot *= 0.28;
   } else if (mode > 3.5) {
     core = pow(1.0 - dist, 0.8);
     rim = step(0.78, dist) * 0.08;

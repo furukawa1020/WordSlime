@@ -85,7 +85,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     halo_scale = 0.36;
   } else if (mode > 1.5 && mode < 2.5) {
     tint = mix(tint, vec3f(0.62, 0.86, 1.0), 0.2);
-    halo_scale = 0.5;
+    halo_scale = 0.72;
   } else if (mode > 0.5 && mode < 1.5) {
     tint = mix(tint, vec3f(1.0, 0.78, 0.24), 0.2);
     halo_scale = 0.32;

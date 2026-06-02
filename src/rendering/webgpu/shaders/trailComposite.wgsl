@@ -25,8 +25,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
 fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let trail = textureSample(trail_texture, trail_sampler, input.uv);
   let luminance = dot(trail.rgb, vec3f(0.2126, 0.7152, 0.0722));
-  let alpha = clamp(trail.a + luminance * 0.32, 0.0, 0.82);
-  let color = trail.rgb * (0.82 + luminance * 0.34);
+  let alpha = clamp(trail.a * 0.72 + luminance * 0.2, 0.0, 0.64);
+  let color = trail.rgb * (0.66 + luminance * 0.26);
 
   return vec4f(color, alpha);
 }

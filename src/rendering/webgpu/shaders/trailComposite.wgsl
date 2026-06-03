@@ -42,7 +42,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     alpha *= 0.74;
   } else if (mode > 1.5 && mode < 2.5) {
     color = mix(color, vec3f(0.14, 0.28, 0.72), 0.38);
-    alpha = clamp(alpha * 0.86 + luminance * 0.08, 0.0, 0.58);
+    alpha = clamp(alpha * 0.68 + luminance * 0.05, 0.0, 0.5);
   } else if (mode > 2.5 && mode < 3.5) {
     color = mix(color, vec3f(0.1, 0.82, 0.32), 0.32);
     alpha *= 0.68;

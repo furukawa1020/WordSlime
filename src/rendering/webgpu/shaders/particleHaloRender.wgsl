@@ -53,8 +53,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
     y_scale = x_scale;
     offset = corner * x_scale;
   } else if (mode > 1.5 && mode < 2.5) {
-    x_scale = base_radius * (15.0 + particle.energy * 9.0);
-    y_scale = base_radius * (4.0 + particle.energy * 2.6);
+    x_scale = base_radius * (8.8 + particle.energy * 5.4);
+    y_scale = base_radius * (2.2 + particle.energy * 1.6);
     offset = side_dir * corner.x * x_scale + velocity_dir * corner.y * y_scale;
   } else if (mode > 2.5 && mode < 3.5) {
     x_scale = base_radius * 1.6;
@@ -109,7 +109,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     halo_scale = 0.36;
   } else if (mode > 1.5 && mode < 2.5) {
     tint = mix(tint, vec3f(0.62, 0.86, 1.0), 0.2);
-    halo_scale = 0.72;
+    halo_scale = 0.46;
   } else if (mode > 0.5 && mode < 1.5) {
     tint = mix(tint, vec3f(1.0, 0.78, 0.24), 0.2);
     halo_scale = 0.32;

@@ -54,8 +54,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
     y_scale = radius * 0.95;
     offset = corner * x_scale;
   } else if (mode > 1.5 && mode < 2.5) {
-    x_scale = radius * (8.5 + particle.energy * 4.5);
-    y_scale = radius * (2.1 + particle.energy * 1.6);
+    x_scale = radius * (5.2 + particle.energy * 2.8);
+    y_scale = radius * (1.35 + particle.energy * 1.1);
     offset = side_dir * corner.x * x_scale + velocity_dir * corner.y * y_scale;
   } else if (mode > 2.5 && mode < 3.5) {
     x_scale = radius * 0.62;
@@ -128,8 +128,9 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     alpha *= 0.56;
     brightness += input.speed * 0.36;
   } else if (mode > 1.5 && mode < 2.5) {
-    alpha *= 0.38;
-    brightness *= 0.68;
+    let vapor = 0.58 + sin(input.local.x * 21.0 + input.local.y * 9.0 + input.age_ratio * 14.0) * 0.32;
+    alpha *= 0.34 * vapor;
+    brightness *= 0.58;
   } else if (mode > 2.5 && mode < 3.5) {
     alpha *= 0.5;
     brightness += 0.12;

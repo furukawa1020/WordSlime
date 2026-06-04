@@ -71,6 +71,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let size = max(params.frame.zw, vec2f(1.0));
   let time = params.frame.y;
   let mode = params.behavior.x;
+  let particle_count = params.behavior.z;
   let uv = input.uv;
   let aspect = vec2f(size.x / size.y, 1.0);
   let centered = (uv - 0.5) * aspect;
@@ -143,6 +144,32 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     let pressure = exp(-pointer_dist * 8.0);
     color += vec3f(0.8, 1.0, 0.9) * pressure * (0.16 + pulse * 0.32 + vortex * 0.18);
     alpha = max(alpha, pressure * 0.2);
+  }
+
+  let workgroups = max(1.0, ceil(particle_count / 64.0));
+  let wg_cells = floor(uv * vec2f(32.0, 18.0));
+  let wg_id = wg_cells.x + wg_cells.y * 32.0;
+  let wg_active = step(wg_id, workgroups);
+  let cell_uv = fract(uv * vec2f(32.0, 18.0));
+  let cell_edge = max(
+    1.0 - smoothstep(0.0, 0.035, min(cell_uv.x, 1.0 - cell_uv.x)),
+    1.0 - smoothstep(0.0, 0.035, min(cell_uv.y, 1.0 - cell_uv.y))
+  );
+  let tick = step(0.94, hash(wg_cells + floor(time * 9.0)));
+  let bit = step(0.78, hash(wg_cells + vec2f(floor(time * 5.0), particle_count * 0.001)));
+  let lane = step(0.988, fract(uv.y * 64.0 - time * 2.4));
+  let address_scan = pow(max(0.0, 1.0 - abs(fract(uv.x * 8.0 + time * 0.18) - 0.5) * 2.0), 22.0);
+  let grid_alpha = wg_active * cell_edge * 0.055 + tick * bit * wg_active * 0.11 + lane * 0.035 + address_scan * 0.04;
+  color += vec3f(0.1, 0.95, 0.78) * grid_alpha;
+  alpha = max(alpha, grid_alpha);
+
+  if (pointer_active > 0.5) {
+    let cross_x = 1.0 - smoothstep(0.0, 0.006, abs(uv.x - pointer_uv.x));
+    let cross_y = 1.0 - smoothstep(0.0, 0.006, abs(uv.y - pointer_uv.y));
+    let scope = circle_line(pointer_dist, 0.075 + pulse * 0.035, 0.012);
+    let cross = max(max(cross_x, cross_y) * 0.14, scope * 0.45);
+    color += vec3f(0.65, 1.0, 0.86) * cross;
+    alpha = max(alpha, cross * 0.72);
   }
 
   return vec4f(color, alpha);

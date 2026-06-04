@@ -639,15 +639,24 @@ function updateHud(hud: HTMLElement, state: AppState): void {
   const latest = state.seeds.at(-1);
   const mode = modeLabels[state.settings.mode];
   const quality = qualityLabels[state.settings.particleQuality];
+  const activeParticles = state.seeds.reduce(
+    (total, seed) => total + seed.particleCount,
+    0,
+  );
+  const workgroups = Math.ceil(activeParticles / 64);
+  const bufferKb = Math.round((activeParticles * 48) / 1024);
 
   hud.innerHTML = `
-    <strong>${mode} / ${quality}</strong>
-    seeds: ${state.seeds.length}<br />
-    particles: ${state.totalParticles.toLocaleString()}<br />
+    <strong>${mode.toUpperCase()} / ${quality.toUpperCase()}</strong>
+    gpu: webgpu<br />
+    pipe: compute+trail+sig<br />
+    wg: ${workgroups.toString(16).toUpperCase().padStart(4, "0")}h<br />
+    vram: ${bufferKb.toLocaleString()}kb<br />
+    seeds: ${state.seeds.length} / particles: ${activeParticles.toLocaleString()}<br />
     ${latest ? `last: ${escapeHtml(trimText(latest.text, 18))}<br />` : ""}
-    ${state.queuedInputs > 0 ? `queued: ${state.queuedInputs}<br />` : ""}
+    ${state.queuedInputs > 0 ? `queue: ${state.queuedInputs}<br />` : ""}
     fps: ${state.performance.fps > 0 ? Math.round(state.performance.fps) : "-"}<br />
-    ${state.isPaused ? "paused" : latest ? `energy: ${latest.genome.energy.toFixed(2)}` : "waiting"}
+    ${state.isPaused ? "state: pause" : latest ? `energy: ${latest.genome.energy.toFixed(2)}` : "state: idle"}
   `;
 }
 

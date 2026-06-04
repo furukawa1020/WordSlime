@@ -49,8 +49,8 @@ fn fbm(point: vec2f) -> f32 {
   return value;
 }
 
-fn line_band(value: f32, target: f32, width: f32) -> f32 {
-  return 1.0 - smoothstep(0.0, width, abs(value - target));
+fn line_band(value: f32, line_center: f32, width: f32) -> f32 {
+  return 1.0 - smoothstep(0.0, width, abs(value - line_center));
 }
 
 fn circle_line(distance: f32, radius: f32, width: f32) -> f32 {

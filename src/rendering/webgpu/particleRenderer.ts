@@ -2,6 +2,7 @@ import type { AppSettings, SimulationMode } from "../../app/settings";
 import type { WordSeed } from "../../app/state";
 import { configureCanvas, createWebGpuDevice, type WebGpuDevice } from "./device";
 import backgroundRenderShader from "./shaders/backgroundRender.wgsl?raw";
+import modeSignatureRenderShader from "./shaders/modeSignatureRender.wgsl?raw";
 import particleHaloRenderShader from "./shaders/particleHaloRender.wgsl?raw";
 import particleRenderShader from "./shaders/particleRender.wgsl?raw";
 import particleUpdateShader from "./shaders/particleUpdate.wgsl?raw";
@@ -69,12 +70,14 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly trailSampler: GPUSampler;
   private readonly computePipeline: GPUComputePipeline;
   private readonly backgroundPipeline: GPURenderPipeline;
+  private readonly modeSignaturePipeline: GPURenderPipeline;
   private readonly trailFeedbackPipeline: GPURenderPipeline;
   private readonly trailCompositePipeline: GPURenderPipeline;
   private readonly haloPipeline: GPURenderPipeline;
   private readonly renderPipeline: GPURenderPipeline;
   private readonly computeBindGroup: GPUBindGroup;
   private readonly backgroundBindGroup: GPUBindGroup;
+  private readonly modeSignatureBindGroup: GPUBindGroup;
   private readonly haloBindGroup: GPUBindGroup;
   private readonly renderBindGroup: GPUBindGroup;
   private trailTextures: GPUTexture[] = [];
@@ -115,6 +118,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     const backgroundModule = gpu.device.createShaderModule({
       label: "background flow shader",
       code: backgroundRenderShader,
+    });
+    const modeSignatureModule = gpu.device.createShaderModule({
+      label: "mode signature shader",
+      code: modeSignatureRenderShader,
     });
     const haloModule = gpu.device.createShaderModule({
       label: "particle halo shader",
@@ -169,6 +176,38 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         module: backgroundModule,
         entryPoint: "fs_main",
         targets: [{ format: gpu.format }],
+      },
+      primitive: {
+        topology: "triangle-list",
+      },
+    });
+    this.modeSignaturePipeline = gpu.device.createRenderPipeline({
+      label: "mode signature pipeline",
+      layout: "auto",
+      vertex: {
+        module: modeSignatureModule,
+        entryPoint: "vs_main",
+      },
+      fragment: {
+        module: modeSignatureModule,
+        entryPoint: "fs_main",
+        targets: [
+          {
+            format: gpu.format,
+            blend: {
+              color: {
+                srcFactor: "src-alpha",
+                dstFactor: "one-minus-src-alpha",
+                operation: "add",
+              },
+              alpha: {
+                srcFactor: "one",
+                dstFactor: "one-minus-src-alpha",
+                operation: "add",
+              },
+            },
+          },
+        ],
       },
       primitive: {
         topology: "triangle-list",
@@ -298,6 +337,13 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.backgroundBindGroup = gpu.device.createBindGroup({
       label: "background flow bind group",
       layout: this.backgroundPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.paramsBuffer } },
+      ],
+    });
+    this.modeSignatureBindGroup = gpu.device.createBindGroup({
+      label: "mode signature bind group",
+      layout: this.modeSignaturePipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: this.paramsBuffer } },
       ],
@@ -521,6 +567,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
 
     renderPass.setPipeline(this.backgroundPipeline);
     renderPass.setBindGroup(0, this.backgroundBindGroup);
+    renderPass.draw(3);
+
+    renderPass.setPipeline(this.modeSignaturePipeline);
+    renderPass.setBindGroup(0, this.modeSignatureBindGroup);
     renderPass.draw(3);
 
     renderPass.setPipeline(this.trailCompositePipeline);

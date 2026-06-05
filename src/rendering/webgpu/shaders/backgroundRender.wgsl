@@ -92,12 +92,16 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let pointer_down = params.pointer.w;
   let pulse = params.extra.x;
   let vortex = params.extra.y;
+  let signature = params.signature;
+  let glyphs = params.glyphs;
+  let input_live = smoothstep(0.0, 0.02, signature.x + glyphs.x);
+  let genome_noise = signature.z * 0.52 + glyphs.w * 0.34 + glyphs.z * 0.22;
 
   var flow = centered;
   flow += vec2f(
-    sin(time * 0.18 + uv.y * 8.0),
-    cos(time * 0.16 + uv.x * 7.0)
-  ) * 0.045;
+    sin(time * (0.18 + glyphs.y * 0.24) + uv.y * (8.0 + glyphs.w * 8.0)),
+    cos(time * (0.16 + glyphs.z * 0.28) + uv.x * (7.0 + signature.z * 9.0))
+  ) * (0.04 + genome_noise * 0.052);
 
   if (mode > 0.5 && mode < 1.5) {
     flow += vec2f(-centered.y, centered.x) * 0.24;
@@ -115,11 +119,20 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     ) * 0.08;
   }
 
-  let cellular = fbm(flow * 4.6 + time * 0.035);
-  let fine = fbm(flow * 17.0 - time * 0.06);
-  let band = pow(1.0 - abs(sin((flow.x + flow.y) * 14.0 + time * 0.46)), 7.0);
+  let cellular = fbm(flow * (4.6 + glyphs.x * 2.4) + time * (0.035 + signature.z * 0.035));
+  let fine = fbm(flow * (17.0 + glyphs.w * 18.0) - time * (0.06 + glyphs.z * 0.08));
+  let band = pow(
+    1.0 - abs(sin((flow.x + flow.y) * (14.0 + glyphs.y * 18.0) + time * (0.46 + signature.x * 0.5))),
+    7.0
+  );
   var shade = cellular * 0.75 + fine * 0.18 + band * 0.18;
   var mode_tint = vec3f(0.0);
+  let data_ribs = pow(
+    1.0 - abs(sin((uv.x * 19.0 + uv.y * 7.0) + time * (0.35 + glyphs.z))),
+    18.0
+  ) * input_live;
+  shade += data_ribs * (0.06 + glyphs.y * 0.16 + signature.z * 0.08);
+  mode_tint += vec3f(0.0, 0.24, 0.2) * data_ribs * glyphs.w;
 
   if (mode > 0.5 && mode < 1.5) {
     let orbit = abs(length(centered) - 0.28);
@@ -167,7 +180,9 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
 
   let vignette = smoothstep(0.88, 0.16, length(centered));
   let base = palette(background, clamp(shade, 0.0, 1.0));
-  let glow = vec3f(0.36, 0.85, 0.76) * band * 0.035;
+  let glow =
+    vec3f(0.36, 0.85, 0.76) * band * (0.035 + signature.x * 0.026) +
+    vec3f(0.98, 0.38, 0.74) * data_ribs * glyphs.z * 0.055;
   let color = base * (0.76 + vignette * 0.24) + glow + mode_tint;
 
   return vec4f(color, 1.0);

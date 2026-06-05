@@ -450,12 +450,14 @@ class WebGpuParticleRenderer implements ParticleRenderer {
 
     this.nextIndex = (this.nextIndex + count) % this.maxParticles;
     this.activeCount = Math.min(this.maxParticles, this.activeCount + count);
+    this.captureSignature(seed);
   }
 
   clear(): void {
     this.activeCount = 0;
     this.nextIndex = 0;
     this.particles.fill(0);
+    this.signature.fill(0);
     this.trailNeedsClear = true;
   }
 
@@ -638,6 +640,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.params[13] = this.pointer.vortex;
     this.params[14] = this.pointer.dragX;
     this.params[15] = this.pointer.dragY;
+    this.params.set(this.signature, 16);
 
     this.gpu.device.queue.writeBuffer(this.paramsBuffer, 0, this.params);
 
@@ -649,6 +652,30 @@ class WebGpuParticleRenderer implements ParticleRenderer {
 
   private renderCount(): number {
     return Math.min(this.activeCount, this.activeBudget);
+  }
+
+  private captureSignature(seed: WordSeed): void {
+    const features = seed.features;
+
+    this.signature[0] = seed.genome.energy;
+    this.signature[1] = seed.genome.viscosity;
+    this.signature[2] = seed.genome.turbulence;
+    this.signature[3] = seed.genome.fertility;
+    this.signature[4] = clamp01(features.length / 280);
+    this.signature[5] = features.repeatRatio;
+    this.signature[6] = clamp01(
+      features.punctuationRatio +
+        (features.exclamationCount + features.questionCount + features.ellipsisCount) /
+          12,
+    );
+    this.signature[7] = clamp01(
+      features.rhythmVariance * 0.36 +
+        features.latinRatio * 0.2 +
+        features.digitRatio * 0.36 +
+        features.katakanaRatio * 0.42 +
+        features.kanjiRatio * 0.54 +
+        features.emojiRatio * 0.82,
+    );
   }
 
   private createTrailTargets(): void {

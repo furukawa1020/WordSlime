@@ -23,12 +23,27 @@ type PointerState = {
 export type ParticleRenderer = {
   addSeed(seed: WordSeed): void;
   clear(): void;
+  getStats(): ParticleRendererStats;
   setParticleBudget(maxParticles: number): void;
   setPointer(pointer: PointerState): void;
   resize(): void;
   onDeviceLost(callback: (info: GPUDeviceLostInfo) => void): void;
   start(): void;
   stop(): void;
+};
+
+export type ParticleRendererStats = {
+  activeBudget: number;
+  activeCount: number;
+  capacity: number;
+  canvasHeight: number;
+  canvasWidth: number;
+  computeWorkgroups: number;
+  particleBufferBytes: number;
+  passCount: number;
+  pipelineCount: number;
+  renderCount: number;
+  trailTextureBytes: number;
 };
 
 const PARTICLE_STRIDE_FLOATS = 12;
@@ -441,6 +456,28 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.nextIndex = 0;
     this.particles.fill(0);
     this.trailNeedsClear = true;
+  }
+
+  getStats(): ParticleRendererStats {
+    const renderCount = this.renderCount();
+
+    return {
+      activeBudget: this.activeBudget,
+      activeCount: this.activeCount,
+      capacity: this.maxParticles,
+      canvasHeight: this.canvas.height,
+      canvasWidth: this.canvas.width,
+      computeWorkgroups: Math.ceil(renderCount / WORKGROUP_SIZE),
+      particleBufferBytes: this.particles.byteLength,
+      passCount: 3,
+      pipelineCount: 6,
+      renderCount,
+      trailTextureBytes:
+        Math.max(1, this.canvas.width) *
+        Math.max(1, this.canvas.height) *
+        4 *
+        2,
+    };
   }
 
   setParticleBudget(maxParticles: number): void {

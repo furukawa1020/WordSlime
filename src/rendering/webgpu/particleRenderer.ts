@@ -1085,6 +1085,10 @@ function hashText(text: string): number {
   return hash >>> 0;
 }
 
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
 function clearColorForBackground(
   background: AppSettings["background"],
 ): GPUColor {

@@ -3,6 +3,8 @@ struct SimParams {
   pointer: vec4f,
   behavior: vec4f,
   extra: vec4f,
+  signature: vec4f,
+  glyphs: vec4f,
 };
 
 struct VertexOut {

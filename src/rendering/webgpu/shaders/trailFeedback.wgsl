@@ -42,12 +42,15 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let pointer_dist = length(pointer_delta);
   let pointer_active = params.pointer.z;
   let pointer_down = params.pointer.w;
+  let signature = params.signature;
+  let glyphs = params.glyphs;
+  let data_noise = signature.z * 0.55 + glyphs.w * 0.35 + glyphs.z * 0.22;
 
   var uv = input.uv;
   uv += vec2f(
-    sin(time * 0.39 + input.uv.y * 16.0),
-    cos(time * 0.34 + input.uv.x * 14.0)
-  ) * mix(0.0028, 0.0009, reduce_motion);
+    sin(time * (0.39 + glyphs.y * 0.42) + input.uv.y * (16.0 + glyphs.w * 8.0)),
+    cos(time * (0.34 + glyphs.z * 0.46) + input.uv.x * (14.0 + signature.z * 9.0))
+  ) * mix(0.0028 + data_noise * 0.0019, 0.0009, reduce_motion);
 
   if (mode > 0.5 && mode < 1.5) {
     let centered = input.uv - vec2f(0.5);
@@ -70,7 +73,8 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
 
   let sample_uv = clamp(uv, vec2f(0.001), vec2f(0.999));
   let sample = textureSample(trail_texture, trail_sampler, sample_uv);
-  var fade = mix(0.918, 0.852, reduce_motion);
+  var fade = mix(0.918 + signature.y * 0.028 + glyphs.y * 0.018, 0.852, reduce_motion);
+  fade -= glyphs.z * 0.024;
   if (mode > 0.5 && mode < 1.5) {
     fade *= 0.94;
   } else if (mode > 1.5 && mode < 2.5) {

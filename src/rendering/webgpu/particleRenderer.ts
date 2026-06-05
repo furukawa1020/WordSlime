@@ -470,7 +470,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       computeWorkgroups: Math.ceil(renderCount / WORKGROUP_SIZE),
       particleBufferBytes: this.particles.byteLength,
       passCount: 3,
-      pipelineCount: 6,
+      pipelineCount: 7,
       renderCount,
       trailTextureBytes:
         Math.max(1, this.canvas.width) *

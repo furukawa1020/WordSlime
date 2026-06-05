@@ -48,7 +48,7 @@ export type ParticleRendererStats = {
 
 const PARTICLE_STRIDE_FLOATS = 12;
 const PARTICLE_STRIDE_BYTES = PARTICLE_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
-const PARAM_FLOATS = 16;
+const PARAM_FLOATS = 24;
 const WORKGROUP_SIZE = 64;
 const TAU = Math.PI * 2;
 
@@ -100,6 +100,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private trailFeedbackBindGroups: GPUBindGroup[] = [];
   private trailCompositeBindGroups: GPUBindGroup[] = [];
   private readonly params = new Float32Array(PARAM_FLOATS);
+  private readonly signature = new Float32Array(8);
   private pointer: PointerState = {
     x: 0,
     y: 0,

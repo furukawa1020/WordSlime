@@ -43,10 +43,12 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
   let corner = CORNERS[vertex_index % 6u];
   let particle = particles[particle_index];
   let mode = params.behavior.x;
+  let signature = params.signature;
+  let glyphs = params.glyphs;
   let base_radius = max(particle.radius, 1.0);
   let velocity_dir = normalize(particle.velocity + vec2f(0.01, 0.003));
   let side_dir = vec2f(-velocity_dir.y, velocity_dir.x);
-  var x_scale = base_radius * (6.2 + particle.energy * 4.4);
+  var x_scale = base_radius * (6.2 + particle.energy * 4.4 + signature.x * 1.2 + glyphs.z * 1.8);
   var y_scale = x_scale;
   var offset = corner * x_scale;
 
@@ -87,6 +89,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let mode = params.behavior.x;
+  let signature = params.signature;
+  let glyphs = params.glyphs;
   var dist = length(input.local);
 
   if (mode > 3.5) {
@@ -100,7 +104,9 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let glow = pow(1.0 - dist, 3.2);
   let smoke = pow(1.0 - dist, 1.55) * 0.18;
   let old_fade = mix(1.0, 0.22, smoothstep(0.62, 1.0, input.age_ratio));
-  var tint = input.color.rgb * (0.82 + input.energy * 0.42);
+  var tint = input.color.rgb * (0.82 + input.energy * 0.42 + signature.x * 0.16);
+  tint += vec3f(0.1, 0.72, 0.58) * glyphs.w * 0.08;
+  tint += vec3f(0.82, 0.08, 0.58) * glyphs.z * 0.08;
   var halo_scale = 1.0;
 
   if (mode > 3.5) {
@@ -117,7 +123,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     halo_scale = 0.32;
   }
 
-  let alpha = input.color.a * (glow * 0.08 + smoke * 0.34) * old_fade;
+  let alpha = input.color.a * (glow * (0.08 + signature.z * 0.035) + smoke * (0.34 + glyphs.y * 0.08)) * old_fade;
   let density_fade = mix(0.55, 0.035, smoothstep(3000.0, 52000.0, params.behavior.z));
   return vec4f(tint * (0.54 + input.energy * 0.34), alpha * density_fade * halo_scale);
 }

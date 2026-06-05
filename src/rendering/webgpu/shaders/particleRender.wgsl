@@ -44,11 +44,13 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
   let corner = CORNERS[vertex_index % 6u];
   let particle = particles[particle_index];
   let mode = params.behavior.x;
+  let signature = params.signature;
+  let glyphs = params.glyphs;
   let radius = max(particle.radius, 1.0);
   let velocity_dir = normalize(particle.velocity + vec2f(0.01, 0.003));
   let side_dir = vec2f(-velocity_dir.y, velocity_dir.x);
-  var x_scale = radius * 2.65;
-  var y_scale = radius * 2.65;
+  var x_scale = radius * (2.55 + signature.y * 0.32 + glyphs.z * 0.42);
+  var y_scale = radius * (2.55 + signature.y * 0.32 + glyphs.y * 0.34);
   var offset = corner * x_scale;
 
   if (mode > 0.5 && mode < 1.5) {
@@ -89,6 +91,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let mode = params.behavior.x;
+  let signature = params.signature;
+  let glyphs = params.glyphs;
   var dist = length(input.local);
 
   if (mode > 3.5) {
@@ -124,7 +128,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let old_fade = mix(1.0, 0.34, smoothstep(0.68, 1.0, input.age_ratio));
   let density_fade = mix(0.82, 0.055, smoothstep(3000.0, 52000.0, params.behavior.z));
   var alpha = input.color.a * (core + rim) * old_fade * density_fade;
-  var brightness = 0.54 + core * 0.68 + hot * 0.42 + input.speed * 0.24;
+  var brightness = 0.54 + core * 0.68 + hot * (0.42 + signature.x * 0.18) + input.speed * 0.24;
+  var tint = input.color.rgb;
+  tint += vec3f(0.04, 0.34, 0.28) * glyphs.w * core * 0.2;
+  tint += vec3f(0.52, 0.02, 0.36) * glyphs.z * hot * 0.16;
 
   if (mode > 0.5 && mode < 1.5) {
     alpha *= 0.56;
@@ -141,5 +148,5 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     brightness += 0.28;
   }
 
-  return vec4f(input.color.rgb * brightness, alpha);
+  return vec4f(tint * brightness, alpha);
 }

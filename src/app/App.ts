@@ -662,6 +662,12 @@ function updateHud(
   const capacity = stats ? `${stats.capacity.toLocaleString()}` : "pending";
   const passCount = stats?.passCount ?? 3;
   const pipelineCount = stats?.pipelineCount ?? 6;
+  const signatureLine = latest
+    ? `sig: ${formatByte(latest.genome.energy)} ${formatByte(latest.genome.viscosity)} ${formatByte(latest.genome.turbulence)} ${formatByte(latest.genome.fertility)}<br />`
+    : "";
+  const glyphLine = latest
+    ? `glyph: ${formatByte(latest.features.length / 280)} ${formatByte(latest.features.repeatRatio)} ${formatByte(symbolPressure(latest))} ${formatByte(glyphComplexity(latest))}<br />`
+    : "";
 
   hud.innerHTML = `
     <strong>${mode.toUpperCase()} / ${quality.toUpperCase()}</strong>
@@ -670,6 +676,8 @@ function updateHud(
     wg: ${workgroups.toString(16).toUpperCase().padStart(4, "0")}h<br />
     fb: ${canvasSize}<br />
     vram: ${formatBytes(gpuBytes)}<br />
+    ${signatureLine}
+    ${glyphLine}
     budget: ${budget} / cap: ${capacity}<br />
     seeds: ${state.seeds.length} / draw: ${renderParticles.toLocaleString()}<br />
     ${latest ? `last: ${escapeHtml(trimText(latest.text, 18))}<br />` : ""}
@@ -685,6 +693,38 @@ function formatBytes(bytes: number): string {
   }
 
   return `${Math.round(bytes / 1024).toLocaleString()}kb`;
+}
+
+function formatByte(value: number): string {
+  return Math.round(clamp(value, 0, 1) * 255)
+    .toString(16)
+    .toUpperCase()
+    .padStart(2, "0");
+}
+
+function symbolPressure(seed: WordSeed): number {
+  return clamp(
+    seed.features.punctuationRatio +
+      (seed.features.exclamationCount +
+        seed.features.questionCount +
+        seed.features.ellipsisCount) /
+        12,
+    0,
+    1,
+  );
+}
+
+function glyphComplexity(seed: WordSeed): number {
+  return clamp(
+    seed.features.rhythmVariance * 0.36 +
+      seed.features.latinRatio * 0.2 +
+      seed.features.digitRatio * 0.36 +
+      seed.features.katakanaRatio * 0.42 +
+      seed.features.kanjiRatio * 0.54 +
+      seed.features.emojiRatio * 0.82,
+    0,
+    1,
+  );
 }
 
 type PerformanceMonitorOptions = {

@@ -639,29 +639,52 @@ function createWordSeed(
   };
 }
 
-function updateHud(hud: HTMLElement, state: AppState): void {
+function updateHud(
+  hud: HTMLElement,
+  state: AppState,
+  stats?: ParticleRendererStats,
+): void {
   const latest = state.seeds.at(-1);
   const mode = modeLabels[state.settings.mode];
   const quality = qualityLabels[state.settings.particleQuality];
-  const activeParticles = state.seeds.reduce(
+  const seedParticles = state.seeds.reduce(
     (total, seed) => total + seed.particleCount,
     0,
   );
-  const workgroups = Math.ceil(activeParticles / 64);
-  const bufferKb = Math.round((activeParticles * 48) / 1024);
+  const renderParticles = stats?.renderCount ?? seedParticles;
+  const workgroups = stats?.computeWorkgroups ?? Math.ceil(renderParticles / 64);
+  const gpuBytes =
+    stats ? stats.particleBufferBytes + stats.trailTextureBytes : renderParticles * 48;
+  const canvasSize = stats
+    ? `${stats.canvasWidth}x${stats.canvasHeight}`
+    : "pending";
+  const budget = stats ? `${stats.activeBudget.toLocaleString()}` : "pending";
+  const capacity = stats ? `${stats.capacity.toLocaleString()}` : "pending";
+  const passCount = stats?.passCount ?? 3;
+  const pipelineCount = stats?.pipelineCount ?? 6;
 
   hud.innerHTML = `
     <strong>${mode.toUpperCase()} / ${quality.toUpperCase()}</strong>
     gpu: webgpu<br />
-    pipe: compute+trail+sig<br />
+    pipe: ${pipelineCount}p / ${passCount}pass<br />
     wg: ${workgroups.toString(16).toUpperCase().padStart(4, "0")}h<br />
-    vram: ${bufferKb.toLocaleString()}kb<br />
-    seeds: ${state.seeds.length} / particles: ${activeParticles.toLocaleString()}<br />
+    fb: ${canvasSize}<br />
+    vram: ${formatBytes(gpuBytes)}<br />
+    budget: ${budget} / cap: ${capacity}<br />
+    seeds: ${state.seeds.length} / draw: ${renderParticles.toLocaleString()}<br />
     ${latest ? `last: ${escapeHtml(trimText(latest.text, 18))}<br />` : ""}
     ${state.queuedInputs > 0 ? `queue: ${state.queuedInputs}<br />` : ""}
     fps: ${state.performance.fps > 0 ? Math.round(state.performance.fps) : "-"}<br />
     ${state.isPaused ? "state: pause" : latest ? `energy: ${latest.genome.energy.toFixed(2)}` : "state: idle"}
   `;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / 1024 / 1024).toFixed(1)}mb`;
+  }
+
+  return `${Math.round(bytes / 1024).toLocaleString()}kb`;
 }
 
 type PerformanceMonitorOptions = {

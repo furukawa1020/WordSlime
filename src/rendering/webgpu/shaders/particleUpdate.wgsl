@@ -13,6 +13,8 @@ struct SimParams {
   pointer: vec4f,
   behavior: vec4f,
   extra: vec4f,
+  signature: vec4f,
+  glyphs: vec4f,
 };
 
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
@@ -85,6 +87,16 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   let time = params.frame.y;
   let size = max(params.frame.zw, vec2f(1.0));
   let mode = params.behavior.x;
+  let signature = params.signature;
+  let glyphs = params.glyphs;
+  let global_energy = signature.x;
+  let global_viscosity = signature.y;
+  let global_turbulence = signature.z;
+  let global_fertility = signature.w;
+  let length_pressure = glyphs.x;
+  let repeat_pressure = glyphs.y;
+  let symbol_pressure = glyphs.z;
+  let glyph_complexity = glyphs.w;
 
   let center = vec2f(size.x * 0.5, size.y * 0.54);
   let to_center = center - particle.position;
@@ -105,9 +117,22 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   } else if (mode > 3.5) {
     common_scale = 0.12;
   }
+  common_scale *= 0.84 + global_turbulence * 0.38 + glyph_complexity * 0.18;
 
-  var flow = wave * (10.0 + particle.energy * 46.0) * common_scale;
-  flow += curlFlow(particle.position, time, particle.energy) * common_scale;
+  var flow = wave *
+    (10.0 + particle.energy * 46.0 + global_energy * 26.0 + symbol_pressure * 34.0) *
+    common_scale;
+  flow += curlFlow(
+    particle.position,
+    time,
+    particle.energy + global_turbulence * 0.52 + glyph_complexity * 0.22
+  ) * common_scale;
+
+  let glyph_wave = vec2f(
+    sin(time * (1.1 + glyph_complexity * 2.6) + particle.position.y * (0.006 + glyphs.x * 0.012)),
+    cos(time * (0.9 + symbol_pressure * 3.0) + particle.position.x * (0.005 + repeat_pressure * 0.016))
+  );
+  flow += glyph_wave * (repeat_pressure * 54.0 + symbol_pressure * 72.0) * common_scale;
 
   let well = vec2f(
     size.x * (0.5 + sin(time * 0.19) * 0.21),
@@ -120,8 +145,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     well_influence * (26.0 + particle.energy * 78.0) * common_scale;
 
   if (mode < 0.5) {
-    flow += normalize(to_center) * (8.0 + particle.energy * 18.0);
-    particle.velocity *= 0.988;
+    flow += normalize(to_center) * (8.0 + particle.energy * 18.0 + global_viscosity * 15.0);
+    particle.velocity *= 0.982 + global_viscosity * 0.012;
   } else if (mode < 1.5) {
     let swirl = vec2f(-to_center.y, to_center.x) / center_dist;
     let orbit_radius =
@@ -150,7 +175,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     );
     flow += branch_dir * (38.0 + particle.energy * 96.0);
     flow += branch_tangent * sin(root_dist * 0.028 + time * 0.7) * 46.0;
-    flow += branch * (28.0 + particle.energy * 32.0);
+    flow += branch * (28.0 + particle.energy * 32.0 + global_fertility * 48.0);
     flow += vec2f(0.0, -14.0);
     particle.velocity *= 0.956;
   } else {
@@ -165,7 +190,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     flow += snap * vec2f(18.0, 28.0);
     particle.velocity *= 0.86;
 
-    if (hash(vec2f(f32(index), floor(time * 16.0))) > 0.992) {
+    if (hash(vec2f(f32(index), floor(time * (14.0 + symbol_pressure * 16.0)))) > 0.992 - symbol_pressure * 0.018) {
       particle.position.x += (hash(vec2f(f32(index), time)) - 0.5) * 260.0;
     }
   }

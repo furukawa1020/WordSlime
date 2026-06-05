@@ -12,6 +12,7 @@ import { TextDecayLayer } from "../rendering/textDecayLayer";
 import {
   createParticleRenderer,
   type ParticleRenderer,
+  type ParticleRendererStats,
 } from "../rendering/webgpu/particleRenderer";
 import { createInitialState, type AppState, type WordSeed } from "./state";
 import {
@@ -61,6 +62,9 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   let recoveringRenderer = false;
   let destroyed = false;
   let densityScale = 1;
+  const updateHudView = () => {
+    updateHud(hud, state, renderer?.getStats());
+  };
   const applyParticleBudget = () => {
     renderer?.setParticleBudget(
       qualityParticleBudgets[state.settings.particleQuality] * densityScale,
@@ -84,7 +88,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     state.settings.audioMode = mode;
     updatePressed(panel, "data-audio", mode);
     updateAudioToggle(audioButton, mode);
-    updateHud(hud, state);
+    updateHudView();
     const available = await audio.setMode(mode);
 
     if (available && mode !== "off") {
@@ -122,7 +126,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     () => {
       applyParticleBudget();
       saveSettings(state.settings);
-      updateHud(hud, state);
+      updateHudView();
       showToast(toast, modeLabels[state.settings.mode], 900);
     },
     repopulateRenderer,
@@ -130,7 +134,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       state.settings.background = background;
       applyBackground(shell, background);
       saveSettings(state.settings);
-      updateHud(hud, state);
+      updateHudView();
       showToast(toast, backgroundLabels[background], 900);
     },
     setAudioMode,
@@ -152,7 +156,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     getRenderer: () => renderer,
     getSediment: () => sediment,
     getAudioStream: () => audio.getRecordingStream(),
-    onStateChange: () => updateHud(hud, state),
+    onStateChange: updateHudView,
     onToast: (message, duration) => showToast(toast, message, duration),
     onAudioToggle: () => {
       void setAudioMode(state.settings.audioMode === "off" ? "soft" : "off");
@@ -166,14 +170,14 @@ export function createApp(root: HTMLElement): WordSlimeApp {
         renderer?.start();
         showToast(toast, "Resumed", 900);
       }
-      updateHud(hud, state);
+      updateHudView();
     },
     onModeSelect: (mode) => {
       state.settings.mode = mode;
       updatePressed(panel, "data-mode", mode);
       repopulateRenderer();
       saveSettings(state.settings);
-      updateHud(hud, state);
+      updateHudView();
       showToast(toast, modeLabels[mode], 900);
     },
   });
@@ -210,7 +214,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
         renderer.start();
       }
 
-      updateHud(hud, state);
+      updateHudView();
 
       if (isRecovery) {
         showToast(toast, "GPUをつなぎ直しました。", 1400);
@@ -267,21 +271,21 @@ export function createApp(root: HTMLElement): WordSlimeApp {
         audio.playCollision(seed, previousSeed);
       }
       audio.updateHum(state);
-      updateHud(hud, state);
+      updateHudView();
     },
     (queuedCount) => {
       state.queuedInputs = queuedCount;
-      updateHud(hud, state);
+      updateHudView();
     },
   );
 
-  updateHud(hud, state);
+  updateHudView();
   showToast(toast, "ことばを打つ。溶けるのを待つ。", 1800);
   const performanceCleanup = startPerformanceMonitor({
     state,
     panel,
     getRenderer: () => renderer,
-    onHudUpdate: () => updateHud(hud, state),
+    onHudUpdate: updateHudView,
     onToast: (message, duration) => showToast(toast, message, duration),
   });
 

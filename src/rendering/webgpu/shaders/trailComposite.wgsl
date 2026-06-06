@@ -37,12 +37,16 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let mode = params.behavior.x;
   let signature = params.signature;
   let glyphs = params.glyphs;
+  let signal = params.signal;
   let trail = textureSample(trail_texture, trail_sampler, input.uv);
   let luminance = dot(trail.rgb, vec3f(0.2126, 0.7152, 0.0722));
+  let spawn_impulse = exp(-signal.x * (1.4 + glyphs.z * 0.6)) * smoothstep(0.0, 0.02, signature.x + glyphs.x);
   var alpha = clamp(trail.a * (0.66 + signature.y * 0.16 + glyphs.y * 0.12) + luminance * 0.2, 0.0, 0.68);
   var color = trail.rgb * (0.64 + luminance * 0.26 + signature.x * 0.08);
   color += vec3f(0.05, 0.48, 0.38) * glyphs.w * luminance * 0.16;
   color += vec3f(0.5, 0.08, 0.32) * glyphs.z * smoothstep(0.22, 0.9, luminance) * 0.16;
+  color += vec3f(0.32, 0.9, 0.78) * spawn_impulse * luminance * 0.14;
+  alpha = clamp(alpha + spawn_impulse * luminance * 0.08, 0.0, 0.7);
 
   if (mode > 0.5 && mode < 1.5) {
     color = mix(color, vec3f(0.95, 0.72, 0.22), smoothstep(0.12, 0.9, luminance) * 0.34);

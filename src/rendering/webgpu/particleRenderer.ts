@@ -48,7 +48,7 @@ export type ParticleRendererStats = {
 
 const PARTICLE_STRIDE_FLOATS = 12;
 const PARTICLE_STRIDE_BYTES = PARTICLE_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
-const PARAM_FLOATS = 24;
+const PARAM_FLOATS = 28;
 const WORKGROUP_SIZE = 64;
 const TAU = Math.PI * 2;
 
@@ -121,6 +121,8 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly startedAt = performance.now();
   private trailReadIndex = 0;
   private trailNeedsClear = true;
+  private signatureAge = 999;
+  private signatureHash = 0;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -458,6 +460,8 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.nextIndex = 0;
     this.particles.fill(0);
     this.signature.fill(0);
+    this.signatureAge = 999;
+    this.signatureHash = 0;
     this.trailNeedsClear = true;
   }
 
@@ -641,9 +645,14 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.params[14] = this.pointer.dragX;
     this.params[15] = this.pointer.dragY;
     this.params.set(this.signature, 16);
+    this.params[24] = this.signatureAge;
+    this.params[25] = this.signatureHash;
+    this.params[26] = this.activeBudget / this.maxParticles;
+    this.params[27] = this.activeCount / this.maxParticles;
 
     this.gpu.device.queue.writeBuffer(this.paramsBuffer, 0, this.params);
 
+    this.signatureAge = Math.min(999, this.signatureAge + dt);
     this.pointer.pulse = Math.max(0, this.pointer.pulse - dt * 3.2);
     this.pointer.vortex = Math.max(0, this.pointer.vortex - dt * 1.45);
     this.pointer.dragX *= 0.86;
@@ -676,6 +685,8 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         features.kanjiRatio * 0.54 +
         features.emojiRatio * 0.82,
     );
+    this.signatureAge = 0;
+    this.signatureHash = hashText(seed.text) / 0xffffffff;
   }
 
   private createTrailTargets(): void {

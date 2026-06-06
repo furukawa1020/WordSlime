@@ -108,6 +108,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let vortex = params.extra.y;
   let signature = params.signature;
   let glyphs = params.glyphs;
+  let signal = params.signal;
   let input_live = smoothstep(0.0, 0.02, signature.x + glyphs.x);
   let energy = signature.x;
   let viscosity = signature.y;
@@ -117,6 +118,9 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let repeat_pressure = glyphs.y;
   let symbol_pressure = glyphs.z;
   let glyph_complexity = glyphs.w;
+  let spawn_age = signal.x;
+  let seed_hash = signal.y;
+  let spawn_impulse = exp(-spawn_age * (1.35 + turbulence * 0.55 + symbol_pressure * 0.7)) * input_live;
   var color = vec3f(0.0);
   var alpha = 0.0;
 
@@ -233,6 +237,24 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     step(matrix_threshold, hash(matrix_cell + vec2f(signature.x * 37.0 + floor(time * 5.0), glyphs.w * 41.0)));
   color += vec3f(0.08, 0.84, 1.0) * matrix_bit * (0.5 + turbulence);
   alpha = max(alpha, matrix_bit * 0.34);
+
+  let seed_center = vec2f(
+    sin(seed_hash * 6.2831853) * 0.12,
+    cos(seed_hash * 10.681415) * 0.1
+  );
+  let seed_delta = centered - seed_center;
+  let seed_radius = length(seed_delta);
+  let seed_angle = atan2(seed_delta.y, seed_delta.x);
+  let kernel_ring = circle_line(seed_radius, 0.11 + spawn_age * (0.2 + energy * 0.08), 0.018 + symbol_pressure * 0.014) * spawn_impulse;
+  let kernel_spokes =
+    pow(max(0.0, sin(seed_angle * (8.0 + floor(seed_hash * 13.0)) + seed_hash * 31.0 + time * (1.8 + turbulence * 2.4))), 14.0) *
+    smoothstep(0.72, 0.04, seed_radius) *
+    spawn_impulse;
+  let kernel_hash = step(0.82 - symbol_pressure * 0.18, hash(floor((uv + seed_hash) * vec2f(74.0, 42.0) + floor(time * 8.0))));
+  color += vec3f(0.78, 1.0, 0.9) * kernel_ring +
+    vec3f(0.15, 0.95, 1.0) * kernel_spokes * (0.18 + glyph_complexity * 0.25) +
+    vec3f(1.0, 0.16, 0.68) * kernel_hash * spawn_impulse * symbol_pressure * 0.18;
+  alpha = max(alpha, kernel_ring * 0.78 + kernel_spokes * 0.24 + kernel_hash * spawn_impulse * symbol_pressure * 0.12);
 
   if (pointer_active > 0.5) {
     let cross_x = 1.0 - smoothstep(0.0, 0.006, abs(uv.x - pointer_uv.x));

@@ -15,6 +15,7 @@ struct SimParams {
   extra: vec4f,
   signature: vec4f,
   glyphs: vec4f,
+  signal: vec4f,
 };
 
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
@@ -89,6 +90,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   let mode = params.behavior.x;
   let signature = params.signature;
   let glyphs = params.glyphs;
+  let signal = params.signal;
   let global_energy = signature.x;
   let global_viscosity = signature.y;
   let global_turbulence = signature.z;
@@ -97,10 +99,19 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   let repeat_pressure = glyphs.y;
   let symbol_pressure = glyphs.z;
   let glyph_complexity = glyphs.w;
+  let spawn_age = signal.x;
+  let seed_hash = signal.y;
+  let spawn_impulse = exp(-spawn_age * (1.45 + symbol_pressure * 0.8 + global_turbulence * 0.6));
 
   let center = vec2f(size.x * 0.5, size.y * 0.54);
   let to_center = center - particle.position;
   let center_dist = max(length(to_center), 1.0);
+  let seed_origin = vec2f(
+    size.x * (0.5 + sin(seed_hash * TAU) * 0.12),
+    size.y * (0.52 + cos(seed_hash * TAU * 1.7) * 0.1)
+  );
+  let from_seed = particle.position - seed_origin;
+  let seed_dist = max(length(from_seed), 1.0);
 
   let wave = vec2f(
     sin(time * (0.72 + particle.energy) + particle.position.y * 0.006),
@@ -133,6 +144,17 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     cos(time * (0.9 + symbol_pressure * 3.0) + particle.position.x * (0.005 + repeat_pressure * 0.016))
   );
   flow += glyph_wave * (repeat_pressure * 54.0 + symbol_pressure * 72.0) * common_scale;
+
+  if (spawn_impulse > 0.002) {
+    let seed_dir = from_seed / seed_dist;
+    let wavefront = 1.0 - min(abs(seed_dist - (54.0 + spawn_age * (380.0 + global_energy * 220.0))) / 150.0, 1.0);
+    let seeded_polarity = mix(-1.0, 1.0, step(0.5, hash(vec2f(f32(index), seed_hash * 997.0))));
+    let tangent = vec2f(-seed_dir.y, seed_dir.x) * seeded_polarity;
+    flow += seed_dir * wavefront * spawn_impulse *
+      (170.0 + global_energy * 140.0 + symbol_pressure * 260.0);
+    flow += tangent * spawn_impulse *
+      (glyph_complexity * 92.0 + repeat_pressure * 180.0 + global_turbulence * 120.0);
+  }
 
   let well = vec2f(
     size.x * (0.5 + sin(time * 0.19) * 0.21),

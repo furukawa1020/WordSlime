@@ -95,8 +95,12 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let vortex = params.extra.y;
   let signature = params.signature;
   let glyphs = params.glyphs;
+  let signal = params.signal;
   let input_live = smoothstep(0.0, 0.02, signature.x + glyphs.x);
   let genome_noise = signature.z * 0.52 + glyphs.w * 0.34 + glyphs.z * 0.22;
+  let spawn_age = signal.x;
+  let seed_hash = signal.y;
+  let spawn_impulse = exp(-spawn_age * (1.35 + glyphs.z * 0.9 + signature.z * 0.45)) * input_live;
 
   var flow = centered;
   flow += vec2f(
@@ -132,8 +136,18 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     1.0 - abs(sin((uv.x * 19.0 + uv.y * 7.0) + time * (0.35 + glyphs.z))),
     18.0
   ) * input_live;
+  let seed_center = vec2f(
+    0.5 + sin(seed_hash * 6.2831853) * 0.12,
+    0.52 + cos(seed_hash * 10.681415) * 0.1
+  );
+  let seed_delta = (uv - seed_center) * aspect;
+  let seed_dist = length(seed_delta);
+  let seed_ring = 1.0 - min(abs(seed_dist - (0.08 + spawn_age * 0.34)) / (0.055 + glyphs.z * 0.03), 1.0);
+  let seed_scan = pow(max(0.0, sin(atan2(seed_delta.y, seed_delta.x) * (8.0 + glyphs.w * 12.0) + seed_hash * 19.0 + time * 2.0)), 14.0);
   shade += data_ribs * (0.06 + glyphs.y * 0.16 + signature.z * 0.08);
+  shade += seed_ring * seed_scan * spawn_impulse * (0.34 + signature.x * 0.32);
   mode_tint += vec3f(0.0, 0.24, 0.2) * data_ribs * glyphs.w;
+  mode_tint += vec3f(0.08, 0.76, 0.7) * seed_ring * spawn_impulse;
 
   if (mode > 0.5 && mode < 1.5) {
     let orbit = abs(length(centered) - 0.28);
@@ -183,7 +197,8 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let base = palette(background, clamp(shade, 0.0, 1.0));
   let glow =
     vec3f(0.36, 0.85, 0.76) * band * (0.035 + signature.x * 0.026) +
-    vec3f(0.98, 0.38, 0.74) * data_ribs * glyphs.z * 0.055;
+    vec3f(0.98, 0.38, 0.74) * data_ribs * glyphs.z * 0.055 +
+    vec3f(0.75, 1.0, 0.9) * seed_ring * spawn_impulse * 0.18;
   let color = base * (0.76 + vignette * 0.24) + glow + mode_tint;
 
   return vec4f(color, 1.0);

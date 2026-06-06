@@ -10,6 +10,7 @@ struct SimParams {
   extra: vec4f,
   signature: vec4f,
   glyphs: vec4f,
+  signal: vec4f,
 };
 
 @group(0) @binding(0) var trail_sampler: sampler;

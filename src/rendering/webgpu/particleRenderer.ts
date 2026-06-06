@@ -43,7 +43,10 @@ export type ParticleRendererStats = {
   passCount: number;
   pipelineCount: number;
   renderCount: number;
+  seedSignalAge: number;
+  seedSignalHash: number;
   trailTextureBytes: number;
+  uniformBufferBytes: number;
 };
 
 const PARTICLE_STRIDE_FLOATS = 12;
@@ -479,11 +482,14 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       passCount: 3,
       pipelineCount: 7,
       renderCount,
+      seedSignalAge: this.signatureAge,
+      seedSignalHash: this.signatureHash,
       trailTextureBytes:
         Math.max(1, this.canvas.width) *
         Math.max(1, this.canvas.height) *
         4 *
         2,
+      uniformBufferBytes: PARAM_FLOATS * Float32Array.BYTES_PER_ELEMENT,
     };
   }
 

@@ -15,6 +15,7 @@ struct SimParams {
   extra: vec4f,
   signature: vec4f,
   glyphs: vec4f,
+  signal: vec4f,
 };
 
 struct VertexOut {

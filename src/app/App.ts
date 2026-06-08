@@ -152,6 +152,8 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     aboutButton,
     aboutClose,
     aboutModal,
+    panel,
+    settingsToggle,
     state,
     getRenderer: () => renderer,
     getSediment: () => sediment,
@@ -435,6 +437,8 @@ type ActionElements = {
   aboutButton: HTMLButtonElement;
   aboutClose: HTMLButtonElement;
   aboutModal: HTMLElement;
+  panel: HTMLElement;
+  settingsToggle: HTMLButtonElement;
   state: AppState;
   getRenderer: () => ParticleRenderer | undefined;
   getSediment: () => SedimentLayer;
@@ -534,11 +538,32 @@ function attachActions(elements: ActionElements): () => void {
     elements.aboutModal.hidden = true;
   };
 
+  const handleAboutBackdrop = (event: MouseEvent) => {
+    if (event.target === elements.aboutModal) {
+      handleAboutClose();
+    }
+  };
+
   const handleAudioToggle = () => {
     elements.onAudioToggle();
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      if (!elements.aboutModal.hidden) {
+        event.preventDefault();
+        handleAboutClose();
+        return;
+      }
+
+      if (!elements.panel.hidden) {
+        event.preventDefault();
+        elements.panel.hidden = true;
+        elements.settingsToggle.setAttribute("aria-expanded", "false");
+        return;
+      }
+    }
+
     if (isEditableTarget(event.target)) {
       return;
     }
@@ -582,6 +607,7 @@ function attachActions(elements: ActionElements): () => void {
   elements.resetButton.addEventListener("click", handleReset);
   elements.aboutButton.addEventListener("click", handleAboutOpen);
   elements.aboutClose.addEventListener("click", handleAboutClose);
+  elements.aboutModal.addEventListener("click", handleAboutBackdrop);
   window.addEventListener("keydown", handleKeyDown);
 
   return () => {
@@ -596,6 +622,7 @@ function attachActions(elements: ActionElements): () => void {
     elements.resetButton.removeEventListener("click", handleReset);
     elements.aboutButton.removeEventListener("click", handleAboutOpen);
     elements.aboutClose.removeEventListener("click", handleAboutClose);
+    elements.aboutModal.removeEventListener("click", handleAboutBackdrop);
     window.removeEventListener("keydown", handleKeyDown);
   };
 }

@@ -662,12 +662,17 @@ function updateHud(
   const capacity = stats ? `${stats.capacity.toLocaleString()}` : "pending";
   const passCount = stats?.passCount ?? 3;
   const pipelineCount = stats?.pipelineCount ?? 6;
+  const uniformBytes = stats ? formatBytes(stats.uniformBufferBytes) : "pending";
   const signatureLine = latest
     ? `sig: ${formatByte(latest.genome.energy)} ${formatByte(latest.genome.viscosity)} ${formatByte(latest.genome.turbulence)} ${formatByte(latest.genome.fertility)}<br />`
     : "";
   const glyphLine = latest
     ? `glyph: ${formatByte(latest.features.length / 280)} ${formatByte(latest.features.repeatRatio)} ${formatByte(symbolPressure(latest))} ${formatByte(glyphComplexity(latest))}<br />`
     : "";
+  const signalLine =
+    latest && stats
+      ? `signal: ${stats.seedSignalAge < 8 ? `${stats.seedSignalAge.toFixed(2)}s` : "cold"} / ${formatByte(stats.seedSignalHash)}<br />`
+      : "";
 
   hud.innerHTML = `
     <strong>${mode.toUpperCase()} / ${quality.toUpperCase()}</strong>
@@ -676,8 +681,10 @@ function updateHud(
     wg: ${workgroups.toString(16).toUpperCase().padStart(4, "0")}h<br />
     fb: ${canvasSize}<br />
     vram: ${formatBytes(gpuBytes)}<br />
+    ubo: ${uniformBytes}<br />
     ${signatureLine}
     ${glyphLine}
+    ${signalLine}
     budget: ${budget} / cap: ${capacity}<br />
     seeds: ${state.seeds.length} / draw: ${renderParticles.toLocaleString()}<br />
     ${latest ? `last: ${escapeHtml(trimText(latest.text, 18))}<br />` : ""}
@@ -690,6 +697,10 @@ function updateHud(
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) {
     return `${(bytes / 1024 / 1024).toFixed(1)}mb`;
+  }
+
+  if (bytes < 1024) {
+    return `${bytes}b`;
   }
 
   return `${Math.round(bytes / 1024).toLocaleString()}kb`;

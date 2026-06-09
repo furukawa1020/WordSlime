@@ -43,6 +43,10 @@ export type ParticleRendererStats = {
   passCount: number;
   pipelineCount: number;
   renderCount: number;
+  reservoirComplexity: number;
+  reservoirEnergy: number;
+  reservoirTurbulence: number;
+  reservoirViscosity: number;
   seedSignalAge: number;
   seedSignalHash: number;
   trailTextureBytes: number;
@@ -51,7 +55,7 @@ export type ParticleRendererStats = {
 
 const PARTICLE_STRIDE_FLOATS = 12;
 const PARTICLE_STRIDE_BYTES = PARTICLE_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
-const PARAM_FLOATS = 28;
+const PARAM_FLOATS = 32;
 const WORKGROUP_SIZE = 64;
 const TAU = Math.PI * 2;
 
@@ -104,6 +108,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private trailCompositeBindGroups: GPUBindGroup[] = [];
   private readonly params = new Float32Array(PARAM_FLOATS);
   private readonly signature = new Float32Array(8);
+  private readonly reservoir = new Float32Array(4);
   private pointer: PointerState = {
     x: 0,
     y: 0,
@@ -126,6 +131,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private trailNeedsClear = true;
   private signatureAge = 999;
   private signatureHash = 0;
+  private reservoirDepth = 0;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -463,8 +469,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.nextIndex = 0;
     this.particles.fill(0);
     this.signature.fill(0);
+    this.reservoir.fill(0);
     this.signatureAge = 999;
     this.signatureHash = 0;
+    this.reservoirDepth = 0;
     this.trailNeedsClear = true;
   }
 
@@ -482,6 +490,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       passCount: 3,
       pipelineCount: 7,
       renderCount,
+      reservoirComplexity: this.reservoir[3],
+      reservoirEnergy: this.reservoir[0],
+      reservoirTurbulence: this.reservoir[2],
+      reservoirViscosity: this.reservoir[1],
       seedSignalAge: this.signatureAge,
       seedSignalHash: this.signatureHash,
       trailTextureBytes:
@@ -655,6 +667,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.params[25] = this.signatureHash;
     this.params[26] = this.activeBudget / this.maxParticles;
     this.params[27] = this.activeCount / this.maxParticles;
+    this.params.set(this.reservoir, 28);
 
     this.gpu.device.queue.writeBuffer(this.paramsBuffer, 0, this.params);
 
@@ -693,6 +706,41 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     );
     this.signatureAge = 0;
     this.signatureHash = hashText(seed.text) / 0xffffffff;
+    this.absorbReservoir(seed);
+  }
+
+  private absorbReservoir(seed: WordSeed): void {
+    const features = seed.features;
+    const symbol = clamp01(
+      features.punctuationRatio +
+        (features.exclamationCount + features.questionCount + features.ellipsisCount) /
+          12,
+    );
+    const complexity = clamp01(
+      features.rhythmVariance * 0.36 +
+        features.latinRatio * 0.2 +
+        features.digitRatio * 0.36 +
+        features.katakanaRatio * 0.42 +
+        features.kanjiRatio * 0.54 +
+        features.emojiRatio * 0.82,
+    );
+    const blend = this.reservoirDepth === 0
+      ? 1
+      : clamp01(0.12 + seed.particleCount / 28000);
+
+    this.reservoir[0] = mix(this.reservoir[0], seed.genome.energy, blend);
+    this.reservoir[1] = mix(this.reservoir[1], seed.genome.viscosity, blend * 0.8);
+    this.reservoir[2] = mix(
+      this.reservoir[2],
+      clamp01(seed.genome.turbulence * 0.78 + symbol * 0.38),
+      blend,
+    );
+    this.reservoir[3] = clamp01(
+      this.reservoir[3] * 0.92 +
+        (complexity * 0.4 + seed.genome.fertility * 0.34 + features.repeatRatio * 0.26) *
+          0.22,
+    );
+    this.reservoirDepth = Math.min(255, this.reservoirDepth + 1);
   }
 
   private createTrailTargets(): void {
@@ -1104,6 +1152,10 @@ function hashText(text: string): number {
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
+}
+
+function mix(from: number, to: number, amount: number): number {
+  return from + (to - from) * amount;
 }
 
 function clearColorForBackground(

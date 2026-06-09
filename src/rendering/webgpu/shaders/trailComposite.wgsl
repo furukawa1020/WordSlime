@@ -11,6 +11,7 @@ struct SimParams {
   signature: vec4f,
   glyphs: vec4f,
   signal: vec4f,
+  reservoir: vec4f,
 };
 
 @group(0) @binding(0) var trail_sampler: sampler;
@@ -38,6 +39,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let signature = params.signature;
   let glyphs = params.glyphs;
   let signal = params.signal;
+  let reservoir = params.reservoir;
   let trail = textureSample(trail_texture, trail_sampler, input.uv);
   let luminance = dot(trail.rgb, vec3f(0.2126, 0.7152, 0.0722));
   let spawn_impulse = exp(-signal.x * (1.4 + glyphs.z * 0.6)) * smoothstep(0.0, 0.02, signature.x + glyphs.x);
@@ -46,6 +48,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   color += vec3f(0.05, 0.48, 0.38) * glyphs.w * luminance * 0.16;
   color += vec3f(0.5, 0.08, 0.32) * glyphs.z * smoothstep(0.22, 0.9, luminance) * 0.16;
   color += vec3f(0.32, 0.9, 0.78) * spawn_impulse * luminance * 0.14;
+  color += vec3f(0.12, 0.74, 0.34) * reservoir.w * luminance * 0.14;
   alpha = clamp(alpha + spawn_impulse * luminance * 0.08, 0.0, 0.7);
 
   if (mode > 0.5 && mode < 1.5) {

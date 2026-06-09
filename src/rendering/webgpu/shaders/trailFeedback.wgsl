@@ -6,6 +6,7 @@ struct SimParams {
   signature: vec4f,
   glyphs: vec4f,
   signal: vec4f,
+  reservoir: vec4f,
 };
 
 struct VertexOut {
@@ -46,6 +47,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let signature = params.signature;
   let glyphs = params.glyphs;
   let signal = params.signal;
+  let reservoir = params.reservoir;
   let data_noise = signature.z * 0.55 + glyphs.w * 0.35 + glyphs.z * 0.22;
   let spawn_impulse = exp(-signal.x * (1.5 + glyphs.z * 0.7)) * smoothstep(0.0, 0.02, signature.x + glyphs.x);
 
@@ -76,7 +78,11 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
 
   let sample_uv = clamp(uv, vec2f(0.001), vec2f(0.999));
   let sample = textureSample(trail_texture, trail_sampler, sample_uv);
-  var fade = mix(0.918 + signature.y * 0.028 + glyphs.y * 0.018, 0.852, reduce_motion);
+  var fade = mix(
+    0.918 + signature.y * 0.028 + glyphs.y * 0.018 + reservoir.y * 0.028 + reservoir.w * 0.018,
+    0.852,
+    reduce_motion
+  );
   fade -= glyphs.z * 0.024 + spawn_impulse * 0.035;
   if (mode > 0.5 && mode < 1.5) {
     fade *= 0.94;

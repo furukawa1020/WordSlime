@@ -6,6 +6,7 @@ struct SimParams {
   signature: vec4f,
   glyphs: vec4f,
   signal: vec4f,
+  reservoir: vec4f,
 };
 
 struct VertexOut {
@@ -109,7 +110,9 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let signature = params.signature;
   let glyphs = params.glyphs;
   let signal = params.signal;
+  let reservoir = params.reservoir;
   let input_live = smoothstep(0.0, 0.02, signature.x + glyphs.x);
+  let memory_live = smoothstep(0.01, 0.18, reservoir.w);
   let energy = signature.x;
   let viscosity = signature.y;
   let turbulence = signature.z;
@@ -237,6 +240,29 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     step(matrix_threshold, hash(matrix_cell + vec2f(signature.x * 37.0 + floor(time * 5.0), glyphs.w * 41.0)));
   color += vec3f(0.08, 0.84, 1.0) * matrix_bit * (0.5 + turbulence);
   alpha = max(alpha, matrix_bit * 0.34);
+
+  let memory_zone = memory_live * step(0.82, uv.y) * step(0.16, uv.x) * step(uv.x, 0.84);
+  let memory_grid = vec2f((uv.x - 0.16) / 0.68, (uv.y - 0.82) / 0.14);
+  let memory_cell = floor(memory_grid * vec2f(64.0, 7.0));
+  let memory_cell_uv = fract(memory_grid * vec2f(64.0, 7.0));
+  let memory_metric =
+    reservoir.x * step(memory_cell.y, 0.5) +
+    reservoir.y * step(0.5, memory_cell.y) * step(memory_cell.y, 1.5) +
+    reservoir.z * step(1.5, memory_cell.y) * step(memory_cell.y, 2.5) +
+    reservoir.w * step(2.5, memory_cell.y);
+  let memory_bit =
+    memory_zone *
+    step(0.22, memory_cell_uv.x) *
+    step(memory_cell_uv.x, 0.78) *
+    step(0.24, memory_cell_uv.y) *
+    step(memory_cell_uv.y, 0.76) *
+    step(0.72 - memory_metric * 0.34, hash(memory_cell + vec2f(floor(time * 3.0), reservoir.z * 31.0)));
+  let memory_lane =
+    memory_zone *
+    step(0.94, fract(memory_grid.x * (12.0 + reservoir.w * 18.0) - time * (0.18 + reservoir.x * 0.4)));
+  color += vec3f(0.12, 1.0, 0.5) * memory_bit * (0.28 + reservoir.w) +
+    vec3f(0.42, 0.96, 1.0) * memory_lane * 0.12;
+  alpha = max(alpha, memory_bit * 0.28 + memory_lane * 0.08);
 
   let seed_center = vec2f(
     sin(seed_hash * 6.2831853) * 0.12,

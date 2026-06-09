@@ -6,6 +6,7 @@ struct SimParams {
   signature: vec4f,
   glyphs: vec4f,
   signal: vec4f,
+  reservoir: vec4f,
 };
 
 struct VertexOut {
@@ -96,8 +97,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let signature = params.signature;
   let glyphs = params.glyphs;
   let signal = params.signal;
+  let reservoir = params.reservoir;
   let input_live = smoothstep(0.0, 0.02, signature.x + glyphs.x);
   let genome_noise = signature.z * 0.52 + glyphs.w * 0.34 + glyphs.z * 0.22;
+  let memory_live = smoothstep(0.01, 0.18, reservoir.w);
   let spawn_age = signal.x;
   let seed_hash = signal.y;
   let spawn_impulse = exp(-spawn_age * (1.35 + glyphs.z * 0.9 + signature.z * 0.45)) * input_live;
@@ -107,6 +110,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     sin(time * (0.18 + glyphs.y * 0.24) + uv.y * (8.0 + glyphs.w * 8.0)),
     cos(time * (0.16 + glyphs.z * 0.28) + uv.x * (7.0 + signature.z * 9.0))
   ) * (0.04 + genome_noise * 0.052);
+  flow += vec2f(
+    sin(time * (0.09 + reservoir.x * 0.18) + centered.y * (9.0 + reservoir.w * 16.0)),
+    cos(time * (0.08 + reservoir.z * 0.16) + centered.x * (8.0 + reservoir.y * 12.0))
+  ) * memory_live * (0.035 + reservoir.z * 0.06);
 
   if (mode > 0.5 && mode < 1.5) {
     flow += vec2f(-centered.y, centered.x) * 0.24;
@@ -136,6 +143,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     1.0 - abs(sin((uv.x * 19.0 + uv.y * 7.0) + time * (0.35 + glyphs.z))),
     18.0
   ) * input_live;
+  let memory_ribs = pow(
+    1.0 - abs(sin((centered.x * (11.0 + reservoir.w * 18.0) - centered.y * 7.0) + time * (0.16 + reservoir.x * 0.24))),
+    9.0
+  ) * memory_live;
   let seed_center = vec2f(
     0.5 + sin(seed_hash * 6.2831853) * 0.12,
     0.52 + cos(seed_hash * 10.681415) * 0.1
@@ -145,8 +156,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let seed_ring = 1.0 - min(abs(seed_dist - (0.08 + spawn_age * 0.34)) / (0.055 + glyphs.z * 0.03), 1.0);
   let seed_scan = pow(max(0.0, sin(atan2(seed_delta.y, seed_delta.x) * (8.0 + glyphs.w * 12.0) + seed_hash * 19.0 + time * 2.0)), 14.0);
   shade += data_ribs * (0.06 + glyphs.y * 0.16 + signature.z * 0.08);
+  shade += memory_ribs * (0.08 + reservoir.z * 0.16);
   shade += seed_ring * seed_scan * spawn_impulse * (0.34 + signature.x * 0.32);
   mode_tint += vec3f(0.0, 0.24, 0.2) * data_ribs * glyphs.w;
+  mode_tint += vec3f(0.08, 0.34, 0.22) * memory_ribs * reservoir.w;
   mode_tint += vec3f(0.08, 0.76, 0.7) * seed_ring * spawn_impulse;
 
   if (mode > 0.5 && mode < 1.5) {
@@ -198,6 +211,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let glow =
     vec3f(0.36, 0.85, 0.76) * band * (0.035 + signature.x * 0.026) +
     vec3f(0.98, 0.38, 0.74) * data_ribs * glyphs.z * 0.055 +
+    vec3f(0.36, 1.0, 0.54) * memory_ribs * reservoir.w * 0.06 +
     vec3f(0.75, 1.0, 0.9) * seed_ring * spawn_impulse * 0.18;
   let color = base * (0.76 + vignette * 0.24) + glow + mode_tint;
 

@@ -16,6 +16,7 @@ struct SimParams {
   signature: vec4f,
   glyphs: vec4f,
   signal: vec4f,
+  reservoir: vec4f,
 };
 
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
@@ -91,10 +92,15 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   let signature = params.signature;
   let glyphs = params.glyphs;
   let signal = params.signal;
+  let reservoir = params.reservoir;
   let global_energy = signature.x;
   let global_viscosity = signature.y;
   let global_turbulence = signature.z;
   let global_fertility = signature.w;
+  let memory_energy = reservoir.x;
+  let memory_viscosity = reservoir.y;
+  let memory_turbulence = reservoir.z;
+  let memory_complexity = reservoir.w;
   let length_pressure = glyphs.x;
   let repeat_pressure = glyphs.y;
   let symbol_pressure = glyphs.z;
@@ -128,7 +134,11 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   } else if (mode > 3.5) {
     common_scale = 0.12;
   }
-  common_scale *= 0.84 + global_turbulence * 0.38 + glyph_complexity * 0.18;
+  common_scale *= 0.84 +
+    global_turbulence * 0.38 +
+    glyph_complexity * 0.18 +
+    memory_turbulence * 0.18 +
+    memory_complexity * 0.16;
 
   var flow = wave *
     (10.0 + particle.energy * 46.0 + global_energy * 26.0 + symbol_pressure * 34.0) *
@@ -144,6 +154,23 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     cos(time * (0.9 + symbol_pressure * 3.0) + particle.position.x * (0.005 + repeat_pressure * 0.016))
   );
   flow += glyph_wave * (repeat_pressure * 54.0 + symbol_pressure * 72.0) * common_scale;
+
+  if (memory_complexity > 0.01) {
+    let memory_center = vec2f(
+      size.x * (0.5 + sin(memory_energy * TAU + time * 0.05) * 0.18),
+      size.y * (0.55 + cos(memory_turbulence * TAU + time * 0.04) * 0.13)
+    );
+    let memory_delta = particle.position - memory_center;
+    let memory_dist = max(length(memory_delta), 1.0);
+    let memory_dir = memory_delta / memory_dist;
+    let memory_tangent = vec2f(-memory_dir.y, memory_dir.x);
+    let memory_band = sin(memory_dist * (0.008 + memory_complexity * 0.014) - time * (0.45 + memory_energy));
+    let memory_well = 1.0 - smoothstep(180.0, 760.0, memory_dist);
+    flow += memory_tangent * memory_band * memory_well *
+      (28.0 + memory_turbulence * 118.0 + memory_complexity * 72.0);
+    flow -= memory_dir * memory_well * memory_viscosity *
+      (12.0 + memory_energy * 44.0);
+  }
 
   if (spawn_impulse > 0.002) {
     let seed_dir = from_seed / seed_dist;
@@ -167,7 +194,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     well_influence * (26.0 + particle.energy * 78.0) * common_scale;
 
   if (mode < 0.5) {
-    flow += normalize(to_center) * (8.0 + particle.energy * 18.0 + global_viscosity * 15.0);
+    flow += normalize(to_center) *
+      (8.0 + particle.energy * 18.0 + global_viscosity * 15.0 + memory_viscosity * 12.0);
     particle.velocity *= 0.982 + global_viscosity * 0.012;
   } else if (mode < 1.5) {
     let swirl = vec2f(-to_center.y, to_center.x) / center_dist;

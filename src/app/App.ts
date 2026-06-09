@@ -700,6 +700,9 @@ function updateHud(
     latest && stats
       ? `signal: ${stats.seedSignalAge < 8 ? `${stats.seedSignalAge.toFixed(2)}s` : "cold"} / ${formatByte(stats.seedSignalHash)}<br />`
       : "";
+  const tankLine = stats
+    ? `tank: ${formatByte(stats.reservoirEnergy)} ${formatByte(stats.reservoirViscosity)} ${formatByte(stats.reservoirTurbulence)} ${formatByte(stats.reservoirComplexity)}<br />`
+    : "";
 
   hud.innerHTML = `
     <strong>${mode.toUpperCase()} / ${quality.toUpperCase()}</strong>
@@ -712,6 +715,7 @@ function updateHud(
     ${signatureLine}
     ${glyphLine}
     ${signalLine}
+    ${tankLine}
     budget: ${budget} / cap: ${capacity}<br />
     seeds: ${state.seeds.length} / draw: ${renderParticles.toLocaleString()}<br />
     ${latest ? `last: ${escapeHtml(trimText(latest.text, 18))}<br />` : ""}

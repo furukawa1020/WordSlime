@@ -4,6 +4,7 @@ import { configureCanvas, createWebGpuDevice, type WebGpuDevice } from "./device
 import backgroundRenderShader from "./shaders/backgroundRender.wgsl?raw";
 import modeSignatureRenderShader from "./shaders/modeSignatureRender.wgsl?raw";
 import particleHaloRenderShader from "./shaders/particleHaloRender.wgsl?raw";
+import particleReactionShader from "./shaders/particleReaction.wgsl?raw";
 import particleRenderShader from "./shaders/particleRender.wgsl?raw";
 import particleUpdateShader from "./shaders/particleUpdate.wgsl?raw";
 import trailCompositeShader from "./shaders/trailComposite.wgsl?raw";
@@ -91,6 +92,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly paramsBuffer: GPUBuffer;
   private readonly trailSampler: GPUSampler;
   private readonly computePipeline: GPUComputePipeline;
+  private readonly reactionPipeline: GPUComputePipeline;
   private readonly backgroundPipeline: GPURenderPipeline;
   private readonly modeSignaturePipeline: GPURenderPipeline;
   private readonly trailFeedbackPipeline: GPURenderPipeline;
@@ -98,6 +100,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly haloPipeline: GPURenderPipeline;
   private readonly renderPipeline: GPURenderPipeline;
   private readonly computeBindGroup: GPUBindGroup;
+  private readonly reactionBindGroup: GPUBindGroup;
   private readonly backgroundBindGroup: GPUBindGroup;
   private readonly modeSignatureBindGroup: GPUBindGroup;
   private readonly haloBindGroup: GPUBindGroup;
@@ -141,6 +144,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     const updateModule = gpu.device.createShaderModule({
       label: "particle update shader",
       code: particleUpdateShader,
+    });
+    const reactionModule = gpu.device.createShaderModule({
+      label: "particle reaction shader",
+      code: particleReactionShader,
     });
     const backgroundModule = gpu.device.createShaderModule({
       label: "background flow shader",
@@ -189,6 +196,14 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       layout: "auto",
       compute: {
         module: updateModule,
+        entryPoint: "main",
+      },
+    });
+    this.reactionPipeline = gpu.device.createComputePipeline({
+      label: "particle reaction pipeline",
+      layout: "auto",
+      compute: {
+        module: reactionModule,
         entryPoint: "main",
       },
     });
@@ -361,6 +376,14 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         { binding: 1, resource: { buffer: this.paramsBuffer } },
       ],
     });
+    this.reactionBindGroup = gpu.device.createBindGroup({
+      label: "particle reaction bind group",
+      layout: this.reactionPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.particleBuffer } },
+        { binding: 1, resource: { buffer: this.paramsBuffer } },
+      ],
+    });
     this.backgroundBindGroup = gpu.device.createBindGroup({
       label: "background flow bind group",
       layout: this.backgroundPipeline.getBindGroupLayout(0),
@@ -487,8 +510,8 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       canvasWidth: this.canvas.width,
       computeWorkgroups: Math.ceil(renderCount / WORKGROUP_SIZE),
       particleBufferBytes: this.particles.byteLength,
-      passCount: 3,
-      pipelineCount: 7,
+      passCount: 4,
+      pipelineCount: 8,
       renderCount,
       reservoirComplexity: this.reservoir[3],
       reservoirEnergy: this.reservoir[0],
@@ -580,6 +603,16 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         Math.ceil(renderCount / WORKGROUP_SIZE),
       );
       computePass.end();
+
+      const reactionPass = encoder.beginComputePass({
+        label: "particle reaction pass",
+      });
+      reactionPass.setPipeline(this.reactionPipeline);
+      reactionPass.setBindGroup(0, this.reactionBindGroup);
+      reactionPass.dispatchWorkgroups(
+        Math.ceil(renderCount / WORKGROUP_SIZE),
+      );
+      reactionPass.end();
     }
 
     const readTrailIndex = this.trailReadIndex;

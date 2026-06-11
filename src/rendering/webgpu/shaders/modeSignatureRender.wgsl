@@ -123,6 +123,8 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let glyph_complexity = glyphs.w;
   let spawn_age = signal.x;
   let seed_hash = signal.y;
+  let draft_strength = signal.z;
+  let draft_hash = signal.w;
   let spawn_impulse = exp(-spawn_age * (1.35 + turbulence * 0.55 + symbol_pressure * 0.7)) * input_live;
   var color = vec3f(0.0);
   var alpha = 0.0;
@@ -263,6 +265,39 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   color += vec3f(0.12, 1.0, 0.5) * memory_bit * (0.28 + reservoir.w) +
     vec3f(0.42, 0.96, 1.0) * memory_lane * 0.12;
   alpha = max(alpha, memory_bit * 0.28 + memory_lane * 0.08);
+
+  let draft_zone =
+    draft_strength *
+    step(0.24, uv.x) *
+    step(uv.x, 0.76) *
+    step(0.68, uv.y) *
+    step(uv.y, 0.8);
+  let draft_grid = vec2f((uv.x - 0.24) / 0.52, (uv.y - 0.68) / 0.12);
+  let draft_cell = floor(draft_grid * vec2f(48.0, 5.0));
+  let draft_cell_uv = fract(draft_grid * vec2f(48.0, 5.0));
+  let draft_core =
+    step(0.18, draft_cell_uv.x) *
+    step(draft_cell_uv.x, 0.82) *
+    step(0.22, draft_cell_uv.y) *
+    step(draft_cell_uv.y, 0.78);
+  let draft_clock = floor(time * (8.0 + draft_strength * 16.0));
+  let draft_bit =
+    draft_zone *
+    draft_core *
+    step(
+      0.66 - draft_strength * 0.24,
+      hash(draft_cell + vec2f(draft_hash * 251.0 + draft_clock, draft_hash * 113.0))
+    );
+  let draft_lane =
+    draft_strength *
+    step(0.24, uv.x) *
+    step(uv.x, 0.76) *
+    step(0.67, uv.y) *
+    step(uv.y, 0.81) *
+    step(0.965, fract((uv.x + draft_hash) * 18.0 - time * (1.4 + draft_strength * 2.4)));
+  color += vec3f(0.08, 1.0, 0.78) * draft_bit * (0.58 + turbulence * 0.42) +
+    vec3f(1.0, 0.24, 0.68) * draft_lane * 0.2;
+  alpha = max(alpha, draft_bit * 0.34 + draft_lane * 0.18);
 
   let seed_center = vec2f(
     sin(seed_hash * 6.2831853) * 0.12,

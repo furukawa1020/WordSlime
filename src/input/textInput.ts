@@ -1,4 +1,5 @@
 export type TextSubmitHandler = (text: string) => void;
+export type TextDraftHandler = (text: string) => void;
 
 const MAX_INPUT_LENGTH = 280;
 const RAPID_SUBMIT_WINDOW_MS = 1000;
@@ -13,6 +14,7 @@ export function attachTextInput(
   textarea: HTMLTextAreaElement,
   onSubmit: TextSubmitHandler,
   onQueued: (count: number) => void,
+  onDraft?: TextDraftHandler,
 ): TextInputController {
   let isComposing = false;
   let submitTimes: number[] = [];
@@ -43,6 +45,7 @@ export function attachTextInput(
 
     textarea.value = "";
     autoSizeTextarea(textarea);
+    onDraft?.("");
 
     const now = performance.now();
     submitTimes = submitTimes.filter(
@@ -72,6 +75,7 @@ export function attachTextInput(
     if (event.key === "Escape") {
       textarea.value = "";
       autoSizeTextarea(textarea);
+      onDraft?.("");
       return;
     }
 
@@ -91,6 +95,7 @@ export function attachTextInput(
     }
 
     autoSizeTextarea(textarea);
+    onDraft?.(textarea.value);
   };
 
   const handleCompositionStart = () => {

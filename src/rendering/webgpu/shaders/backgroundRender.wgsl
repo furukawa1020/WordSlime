@@ -103,6 +103,8 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let memory_live = smoothstep(0.01, 0.18, reservoir.w);
   let spawn_age = signal.x;
   let seed_hash = signal.y;
+  let draft_strength = signal.z;
+  let draft_hash = signal.w;
   let spawn_impulse = exp(-spawn_age * (1.35 + glyphs.z * 0.9 + signature.z * 0.45)) * input_live;
 
   var flow = centered;
@@ -155,12 +157,24 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let seed_dist = length(seed_delta);
   let seed_ring = 1.0 - min(abs(seed_dist - (0.08 + spawn_age * 0.34)) / (0.055 + glyphs.z * 0.03), 1.0);
   let seed_scan = pow(max(0.0, sin(atan2(seed_delta.y, seed_delta.x) * (8.0 + glyphs.w * 12.0) + seed_hash * 19.0 + time * 2.0)), 14.0);
+  let draft_center = vec2f(
+    0.5 + sin(draft_hash * 6.2831853) * 0.16,
+    0.5 + cos(draft_hash * 8.33) * 0.12
+  );
+  let draft_delta = (uv - draft_center) * aspect;
+  let draft_dist = length(draft_delta);
+  let draft_ripple =
+    pow(max(0.0, sin(draft_dist * (42.0 + glyphs.w * 36.0) - time * (2.2 + draft_strength * 3.0))), 10.0) *
+    exp(-draft_dist * (2.2 + signature.y * 1.4)) *
+    draft_strength;
   shade += data_ribs * (0.06 + glyphs.y * 0.16 + signature.z * 0.08);
   shade += memory_ribs * (0.08 + reservoir.z * 0.16);
   shade += seed_ring * seed_scan * spawn_impulse * (0.34 + signature.x * 0.32);
+  shade += draft_ripple * (0.24 + signature.z * 0.24 + glyphs.z * 0.18);
   mode_tint += vec3f(0.0, 0.24, 0.2) * data_ribs * glyphs.w;
   mode_tint += vec3f(0.08, 0.34, 0.22) * memory_ribs * reservoir.w;
   mode_tint += vec3f(0.08, 0.76, 0.7) * seed_ring * spawn_impulse;
+  mode_tint += vec3f(0.0, 0.44, 0.36) * draft_ripple;
 
   if (mode > 0.5 && mode < 1.5) {
     let orbit = abs(length(centered) - 0.28);
@@ -212,6 +226,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     vec3f(0.36, 0.85, 0.76) * band * (0.035 + signature.x * 0.026) +
     vec3f(0.98, 0.38, 0.74) * data_ribs * glyphs.z * 0.055 +
     vec3f(0.36, 1.0, 0.54) * memory_ribs * reservoir.w * 0.06 +
+    vec3f(0.22, 0.95, 0.82) * draft_ripple * 0.16 +
     vec3f(0.75, 1.0, 0.9) * seed_ring * spawn_impulse * 0.18;
   let color = base * (0.76 + vignette * 0.24) + glow + mode_tint;
 

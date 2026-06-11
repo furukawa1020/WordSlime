@@ -81,6 +81,8 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     for (const seed of state.seeds) {
       renderer.addSeed(seed);
     }
+
+    renderer.setDraftSignature(createDraftSignature(textarea.value));
   };
   applyBackground(shell, state.settings.background);
   syncSettingsPanel(panel, state.settings);

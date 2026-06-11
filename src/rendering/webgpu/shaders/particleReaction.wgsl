@@ -57,6 +57,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   let memory_viscosity = reservoir.y;
   let memory_turbulence = reservoir.z;
   let memory_complexity = reservoir.w;
+  let draft_strength = signal.z;
+  let draft_hash = signal.w;
   let random = hash(vec2f(f32(index), floor(time * 11.0) + signal.y * 997.0));
 
   if (spawn_impulse > 0.001) {
@@ -79,6 +81,35 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
       flash * 0.1
     );
     particle.color.a = min(0.85, particle.color.a + flash * 0.018);
+  }
+
+  if (draft_strength > 0.001) {
+    let draft_center = vec2f(
+      size.x * (0.5 + sin(draft_hash * TAU) * 0.16),
+      size.y * (0.5 + cos(draft_hash * TAU * 1.33) * 0.12)
+    );
+    let from_draft = particle.position - draft_center;
+    let draft_dist = max(length(from_draft), 1.0);
+    let draft_dir = from_draft / draft_dist;
+    let tangent = vec2f(-draft_dir.y, draft_dir.x);
+    let carrier = pow(
+      max(0.0, sin(draft_dist * (0.02 + glyphs.w * 0.018) - time * (1.6 + draft_strength * 2.2))),
+      8.0
+    );
+    let near_draft = 1.0 - smoothstep(120.0, 820.0, draft_dist);
+    let packet = carrier * near_draft * draft_strength;
+    let bit = step(0.72 - draft_strength * 0.18, hash(vec2f(f32(index), draft_hash * 4096.0 + floor(time * 12.0))));
+
+    particle.velocity += tangent * packet * (18.0 + signature.z * 120.0 + glyphs.z * 84.0) * dt;
+    particle.velocity += draft_dir * packet * (8.0 + signature.x * 40.0) * dt;
+    particle.radius *= 1.0 + packet * (0.008 + glyphs.y * 0.022 + bit * 0.018);
+    particle.energy = clamp(particle.energy + packet * (0.006 + signature.x * 0.012), 0.0, 1.0);
+    particle.color.rgb = mix(
+      particle.color.rgb,
+      particle.color.rgb + vec3f(0.1 + glyphs.z * 0.22, 0.34 + signature.x * 0.18, 0.28 + glyphs.w * 0.24),
+      packet * (0.12 + bit * 0.08)
+    );
+    particle.color.a = min(0.88, particle.color.a + packet * 0.01);
   }
 
   if (memory_live > 0.001) {

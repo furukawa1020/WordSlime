@@ -107,6 +107,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   let glyph_complexity = glyphs.w;
   let spawn_age = signal.x;
   let seed_hash = signal.y;
+  let draft_strength = signal.z;
+  let draft_hash = signal.w;
   let spawn_impulse = exp(-spawn_age * (1.45 + symbol_pressure * 0.8 + global_turbulence * 0.6));
 
   let center = vec2f(size.x * 0.5, size.y * 0.54);
@@ -154,6 +156,30 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     cos(time * (0.9 + symbol_pressure * 3.0) + particle.position.x * (0.005 + repeat_pressure * 0.016))
   );
   flow += glyph_wave * (repeat_pressure * 54.0 + symbol_pressure * 72.0) * common_scale;
+
+  if (draft_strength > 0.001) {
+    let draft_center = vec2f(
+      size.x * (0.5 + sin(draft_hash * TAU) * 0.16),
+      size.y * (0.5 + cos(draft_hash * TAU * 1.33) * 0.12)
+    );
+    let draft_delta = particle.position - draft_center;
+    let draft_dist = max(length(draft_delta), 1.0);
+    let draft_dir = draft_delta / draft_dist;
+    let draft_tangent = vec2f(-draft_dir.y, draft_dir.x);
+    let draft_band = pow(
+      max(0.0, sin(draft_dist * (0.018 + glyph_complexity * 0.018) - time * (1.25 + draft_strength * 2.8))),
+      6.0
+    );
+    let draft_well = 1.0 - smoothstep(110.0, 760.0, draft_dist);
+    let draft_polarity = mix(-1.0, 1.0, step(0.5, hash(vec2f(f32(index), draft_hash * 997.0))));
+
+    flow += draft_tangent * draft_band * draft_well * draft_strength *
+      (92.0 + global_turbulence * 180.0 + symbol_pressure * 130.0) *
+      draft_polarity;
+    flow += draft_dir * sin(time * (2.0 + draft_strength) + draft_hash * TAU) *
+      draft_well * draft_strength *
+      (22.0 + global_energy * 72.0 + repeat_pressure * 64.0);
+  }
 
   if (memory_complexity > 0.01) {
     let memory_center = vec2f(

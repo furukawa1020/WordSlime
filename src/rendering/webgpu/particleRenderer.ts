@@ -21,10 +21,24 @@ type PointerState = {
   dragY: number;
 };
 
+export type ParticleRendererDraftSignature = {
+  energy: number;
+  viscosity: number;
+  turbulence: number;
+  fertility: number;
+  lengthPressure: number;
+  repeatPressure: number;
+  symbolPressure: number;
+  glyphComplexity: number;
+  strength: number;
+  hash: number;
+};
+
 export type ParticleRenderer = {
   addSeed(seed: WordSeed): void;
   clear(): void;
   getStats(): ParticleRendererStats;
+  setDraftSignature(draft: ParticleRendererDraftSignature | undefined): void;
   setParticleBudget(maxParticles: number): void;
   setPointer(pointer: PointerState): void;
   resize(): void;
@@ -40,6 +54,8 @@ export type ParticleRendererStats = {
   canvasHeight: number;
   canvasWidth: number;
   computeWorkgroups: number;
+  draftHash: number;
+  draftStrength: number;
   particleBufferBytes: number;
   passCount: number;
   pipelineCount: number;
@@ -111,6 +127,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private trailCompositeBindGroups: GPUBindGroup[] = [];
   private readonly params = new Float32Array(PARAM_FLOATS);
   private readonly signature = new Float32Array(8);
+  private readonly draftSignature = new Float32Array(8);
   private readonly reservoir = new Float32Array(4);
   private pointer: PointerState = {
     x: 0,
@@ -134,6 +151,8 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private trailNeedsClear = true;
   private signatureAge = 999;
   private signatureHash = 0;
+  private draftStrength = 0;
+  private draftHash = 0;
   private reservoirDepth = 0;
 
   constructor(
@@ -492,9 +511,12 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.nextIndex = 0;
     this.particles.fill(0);
     this.signature.fill(0);
+    this.draftSignature.fill(0);
     this.reservoir.fill(0);
     this.signatureAge = 999;
     this.signatureHash = 0;
+    this.draftStrength = 0;
+    this.draftHash = 0;
     this.reservoirDepth = 0;
     this.trailNeedsClear = true;
   }
@@ -509,6 +531,8 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       canvasHeight: this.canvas.height,
       canvasWidth: this.canvas.width,
       computeWorkgroups: Math.ceil(renderCount / WORKGROUP_SIZE),
+      draftHash: this.draftHash,
+      draftStrength: this.draftStrength,
       particleBufferBytes: this.particles.byteLength,
       passCount: 4,
       pipelineCount: 8,
@@ -526,6 +550,26 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         2,
       uniformBufferBytes: PARAM_FLOATS * Float32Array.BYTES_PER_ELEMENT,
     };
+  }
+
+  setDraftSignature(draft: ParticleRendererDraftSignature | undefined): void {
+    if (!draft || draft.strength <= 0) {
+      this.draftSignature.fill(0);
+      this.draftStrength = 0;
+      this.draftHash = 0;
+      return;
+    }
+
+    this.draftSignature[0] = clamp01(draft.energy);
+    this.draftSignature[1] = clamp01(draft.viscosity);
+    this.draftSignature[2] = clamp01(draft.turbulence);
+    this.draftSignature[3] = clamp01(draft.fertility);
+    this.draftSignature[4] = clamp01(draft.lengthPressure);
+    this.draftSignature[5] = clamp01(draft.repeatPressure);
+    this.draftSignature[6] = clamp01(draft.symbolPressure);
+    this.draftSignature[7] = clamp01(draft.glyphComplexity);
+    this.draftStrength = clamp01(draft.strength);
+    this.draftHash = clamp01(draft.hash);
   }
 
   setParticleBudget(maxParticles: number): void {
@@ -695,11 +739,18 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.params[13] = this.pointer.vortex;
     this.params[14] = this.pointer.dragX;
     this.params[15] = this.pointer.dragY;
-    this.params.set(this.signature, 16);
+    const draftMix = this.draftStrength * 0.72;
+    for (let index = 0; index < this.signature.length; index += 1) {
+      this.params[16 + index] = mix(
+        this.signature[index],
+        this.draftSignature[index],
+        draftMix,
+      );
+    }
     this.params[24] = this.signatureAge;
     this.params[25] = this.signatureHash;
-    this.params[26] = this.activeBudget / this.maxParticles;
-    this.params[27] = this.activeCount / this.maxParticles;
+    this.params[26] = this.draftStrength;
+    this.params[27] = this.draftHash;
     this.params.set(this.reservoir, 28);
 
     this.gpu.device.queue.writeBuffer(this.paramsBuffer, 0, this.params);

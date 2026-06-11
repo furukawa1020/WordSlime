@@ -5,13 +5,14 @@ import { saveWordSlimeJson } from "../export/saveJson";
 import { saveCanvasPng } from "../export/screenshot";
 import { mapFeaturesToGenome, particleCountForFeatures } from "../input/genome";
 import { attachTextInput } from "../input/textInput";
-import { extractTextFeatures } from "../input/textFeatures";
+import { extractTextFeatures, type TextFeatures } from "../input/textFeatures";
 import { InteractionLayer } from "../rendering/interactionLayer";
 import { SedimentLayer } from "../rendering/sedimentLayer";
 import { TextDecayLayer } from "../rendering/textDecayLayer";
 import {
   createParticleRenderer,
   type ParticleRenderer,
+  type ParticleRendererDraftSignature,
   type ParticleRendererStats,
 } from "../rendering/webgpu/particleRenderer";
 import { createInitialState, type AppState, type WordSeed } from "./state";
@@ -199,6 +200,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       renderer = particleRenderer;
       previousRenderer?.stop();
       applyParticleBudget();
+      renderer.setDraftSignature(createDraftSignature(textarea.value));
       renderer.onDeviceLost((info) => {
         if (destroyed) {
           return;
@@ -255,6 +257,11 @@ export function createApp(root: HTMLElement): WordSlimeApp {
 
   void installRenderer(false);
 
+  const updateDraftSignature = (text: string) => {
+    renderer?.setDraftSignature(createDraftSignature(text));
+    updateHudView();
+  };
+
   const textInput = attachTextInput(
     form,
     textarea,
@@ -279,6 +286,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       state.queuedInputs = queuedCount;
       updateHudView();
     },
+    updateDraftSignature,
   );
 
   updateHudView();
@@ -666,6 +674,39 @@ function createWordSeed(
   };
 }
 
+function createDraftSignature(
+  text: string,
+): ParticleRendererDraftSignature | undefined {
+  const draftText = Array.from(text).slice(0, 280).join("");
+
+  if (draftText.trim().length === 0) {
+    return undefined;
+  }
+
+  const features = extractTextFeatures(draftText);
+  const genome = mapFeaturesToGenome(features);
+
+  return {
+    energy: genome.energy,
+    viscosity: genome.viscosity,
+    turbulence: genome.turbulence,
+    fertility: genome.fertility,
+    lengthPressure: clamp(features.length / 280, 0, 1),
+    repeatPressure: features.repeatRatio,
+    symbolPressure: symbolPressureForFeatures(features),
+    glyphComplexity: glyphComplexityForFeatures(features),
+    strength: clamp(
+      0.12 +
+        features.length / 80 +
+        features.punctuationRatio * 0.2 +
+        features.repeatRatio * 0.18,
+      0.08,
+      1,
+    ),
+    hash: normalizedTextHash(draftText),
+  };
+}
+
 function updateHud(
   hud: HTMLElement,
   state: AppState,
@@ -700,6 +741,10 @@ function updateHud(
     latest && stats
       ? `signal: ${stats.seedSignalAge < 8 ? `${stats.seedSignalAge.toFixed(2)}s` : "cold"} / ${formatByte(stats.seedSignalHash)}<br />`
       : "";
+  const draftLine =
+    stats && stats.draftStrength > 0.01
+      ? `draft: ${formatByte(stats.draftStrength)} / ${formatByte(stats.draftHash)}<br />`
+      : "";
   const tankLine = stats
     ? `tank: ${formatByte(stats.reservoirEnergy)} ${formatByte(stats.reservoirViscosity)} ${formatByte(stats.reservoirTurbulence)} ${formatByte(stats.reservoirComplexity)}<br />`
     : "";
@@ -715,6 +760,7 @@ function updateHud(
     ${signatureLine}
     ${glyphLine}
     ${signalLine}
+    ${draftLine}
     ${tankLine}
     budget: ${budget} / cap: ${capacity}<br />
     seeds: ${state.seeds.length} / draw: ${renderParticles.toLocaleString()}<br />
@@ -745,11 +791,15 @@ function formatByte(value: number): string {
 }
 
 function symbolPressure(seed: WordSeed): number {
+  return symbolPressureForFeatures(seed.features);
+}
+
+function symbolPressureForFeatures(features: TextFeatures): number {
   return clamp(
-    seed.features.punctuationRatio +
-      (seed.features.exclamationCount +
-        seed.features.questionCount +
-        seed.features.ellipsisCount) /
+    features.punctuationRatio +
+      (features.exclamationCount +
+        features.questionCount +
+        features.ellipsisCount) /
         12,
     0,
     1,
@@ -757,16 +807,31 @@ function symbolPressure(seed: WordSeed): number {
 }
 
 function glyphComplexity(seed: WordSeed): number {
+  return glyphComplexityForFeatures(seed.features);
+}
+
+function glyphComplexityForFeatures(features: TextFeatures): number {
   return clamp(
-    seed.features.rhythmVariance * 0.36 +
-      seed.features.latinRatio * 0.2 +
-      seed.features.digitRatio * 0.36 +
-      seed.features.katakanaRatio * 0.42 +
-      seed.features.kanjiRatio * 0.54 +
-      seed.features.emojiRatio * 0.82,
+    features.rhythmVariance * 0.36 +
+      features.latinRatio * 0.2 +
+      features.digitRatio * 0.36 +
+      features.katakanaRatio * 0.42 +
+      features.kanjiRatio * 0.54 +
+      features.emojiRatio * 0.82,
     0,
     1,
   );
+}
+
+function normalizedTextHash(text: string): number {
+  let hash = 2166136261;
+
+  for (const char of Array.from(text)) {
+    hash ^= char.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0) / 0xffffffff;
 }
 
 type PerformanceMonitorOptions = {

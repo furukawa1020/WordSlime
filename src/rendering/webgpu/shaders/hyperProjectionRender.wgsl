@@ -186,6 +186,25 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
 
   var color = vec3f(0.0);
   var alpha = 0.0;
+  let pop_center = vec2f(
+    sin(seed_hash * TAU + time * 0.17) * 0.03,
+    cos(seed_hash * TAU * 1.37 + time * 0.11) * 0.025
+  );
+  let pop_delta = centered - pop_center;
+  let pop_depth = length(pop_delta * vec2f(1.0, 0.72));
+  let pop_radius = 0.42 + glyphs.x * 0.12 + reservoir.w * 0.08 + spawn_impulse * 0.05;
+  let pop_volume = pow(max(0.0, 1.0 - pop_depth / pop_radius), 2.4);
+  let pop_rim = 1.0 - smoothstep(0.0, 0.055 + glyphs.z * 0.02, abs(pop_depth - pop_radius * 0.72));
+  let pop_back_rim = 1.0 - smoothstep(0.0, 0.045, abs(pop_depth - pop_radius * 1.08));
+  let pop_scan = pow(
+    max(0.0, sin((pop_delta.x - pop_delta.y * 0.42) * (48.0 + glyphs.w * 30.0) - time * (2.1 + signature.z))),
+    10.0
+  );
+  color += vec3f(0.03, 0.45, 0.38) * pop_volume * dimensional_gain * 0.32;
+  color += vec3f(0.52, 1.0, 0.9) * pop_rim * dimensional_gain * (0.2 + signature.x * 0.14);
+  color += vec3f(0.9, 0.16, 1.0) * pop_back_rim * dimensional_gain * (0.08 + glyphs.z * 0.08);
+  color += vec3f(0.18, 0.95, 1.0) * pop_scan * pop_volume * dimensional_gain * 0.12;
+  alpha = max(alpha, clamp((pop_volume * 0.18 + pop_rim * 0.36 + pop_back_rim * 0.12) * dimensional_gain, 0.0, 0.64));
   var ray_t = 0.0;
   var hit_position = ro;
   var hit = false;
@@ -226,10 +245,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
 
   var wire = 0.0;
   var wire_color = vec3f(0.0);
-  let hyper_center = vec2f(
-    sin(seed_hash * TAU + time * 0.17) * 0.03,
-    cos(seed_hash * TAU * 1.37 + time * 0.11) * 0.025
-  );
+  let hyper_center = pop_center;
   let wire_width = 0.0055 + glyphs.z * 0.0035 + spawn_impulse * 0.004;
   let depth_bias = -spawn_impulse * 0.44 - draft_strength * 0.18;
 

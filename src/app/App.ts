@@ -40,6 +40,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const canvas = query<HTMLCanvasElement>(root, ".wordslime-canvas");
   const form = query<HTMLFormElement>(root, ".summon-form");
   const textarea = query<HTMLTextAreaElement>(root, ".summon-input");
+  const seedHistory = query<HTMLElement>(root, ".seed-history");
   const spawnText = query<HTMLElement>(root, ".spawn-text");
   const hud = query<HTMLElement>(root, ".hud");
   const intro = query<HTMLElement>(root, ".intro");
@@ -65,6 +66,9 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   let densityScale = 1;
   const updateHudView = () => {
     updateHud(hud, state, renderer?.getStats());
+  };
+  const updateSeedHistoryView = () => {
+    updateSeedHistory(seedHistory, state);
   };
   const applyParticleBudget = () => {
     renderer?.setParticleBudget(
@@ -161,7 +165,10 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     getRenderer: () => renderer,
     getSediment: () => sediment,
     getAudioStream: () => audio.getRecordingStream(),
-    onStateChange: updateHudView,
+    onStateChange: () => {
+      updateHudView();
+      updateSeedHistoryView();
+    },
     onToast: (message, duration) => showToast(toast, message, duration),
     onAudioToggle: () => {
       void setAudioMode(state.settings.audioMode === "off" ? "soft" : "off");
@@ -264,25 +271,56 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     updateHudView();
   };
 
+  const summonText = (text: string, replay = false) => {
+    const previousSeed = state.seeds.at(-1);
+    const seed = createWordSeed(text, state, canvas);
+    state.seeds = [...state.seeds, seed].slice(-36);
+    state.totalParticles += seed.particleCount;
+    intro.dataset.hidden = "true";
+    showSpawnText(spawnText, text);
+    textDecay.play(text, state.settings);
+    sediment.addSeed(seed);
+    renderer?.addSeed(seed);
+    audio.playSpawn(seed);
+    if (previousSeed) {
+      audio.playCollision(seed, previousSeed);
+    }
+    audio.updateHum(state);
+    updateHudView();
+    updateSeedHistoryView();
+
+    if (replay) {
+      showToast(toast, "標本をもう一度落としました。", 900);
+    }
+  };
+
+  const handleSeedHistoryClick = (event: MouseEvent) => {
+    const button = (event.target as Element | null)?.closest<HTMLButtonElement>(
+      "button[data-seed-id]",
+    );
+
+    if (!button) {
+      return;
+    }
+
+    const seed = state.seeds.find((item) => item.id === button.dataset.seedId);
+
+    if (!seed) {
+      return;
+    }
+
+    textarea.value = "";
+    renderer?.setDraftSignature(undefined);
+    summonText(seed.text, true);
+  };
+
+  seedHistory.addEventListener("click", handleSeedHistoryClick);
+
   const textInput = attachTextInput(
     form,
     textarea,
     (text) => {
-      const previousSeed = state.seeds.at(-1);
-      const seed = createWordSeed(text, state, canvas);
-      state.seeds = [...state.seeds, seed].slice(-36);
-      state.totalParticles += seed.particleCount;
-      intro.dataset.hidden = "true";
-      showSpawnText(spawnText, text);
-      textDecay.play(text, state.settings);
-      sediment.addSeed(seed);
-      renderer?.addSeed(seed);
-      audio.playSpawn(seed);
-      if (previousSeed) {
-        audio.playCollision(seed, previousSeed);
-      }
-      audio.updateHum(state);
-      updateHudView();
+      summonText(text);
     },
     (queuedCount) => {
       state.queuedInputs = queuedCount;
@@ -292,6 +330,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   );
 
   updateHudView();
+  updateSeedHistoryView();
   showToast(toast, "ことばを打つ。溶けるのを待つ。", 1800);
   const performanceCleanup = startPerformanceMonitor({
     state,
@@ -306,6 +345,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       destroyed = true;
       rendererGeneration += 1;
       textInput.destroy();
+      seedHistory.removeEventListener("click", handleSeedHistoryClick);
       pointerCleanup();
       settingsCleanup();
       actionCleanup();
@@ -418,6 +458,7 @@ function renderApp(): string {
         <div class="toast" role="status" aria-live="polite"></div>
 
         <div class="input-dock">
+          <div class="seed-history" aria-label="最近落としたことば" data-empty="true"></div>
           <form class="summon-form">
             <textarea
               class="summon-input"
@@ -771,6 +812,34 @@ function updateHud(
     fps: ${state.performance.fps > 0 ? Math.round(state.performance.fps) : "-"}<br />
     ${state.isPaused ? "state: pause" : latest ? `energy: ${latest.genome.energy.toFixed(2)}` : "state: idle"}
   `;
+}
+
+function updateSeedHistory(element: HTMLElement, state: AppState): void {
+  const seeds = state.seeds.slice(-8).reverse();
+  element.dataset.empty = String(seeds.length === 0);
+  element.innerHTML = seeds
+    .map((seed) => {
+      const energy = formatByte(seed.genome.energy);
+      const glyph = formatByte(glyphComplexity(seed));
+      const compactText = seed.text.replace(/\s+/g, " ");
+      const text = escapeHtml(trimText(compactText, 18));
+      const title = escapeHtml(`もう一度落とす: ${trimText(compactText, 42)}`);
+
+      return `
+        <button
+          class="seed-chip"
+          type="button"
+          data-seed-id="${escapeHtml(seed.id)}"
+          style="--seed-energy: ${seed.genome.energy.toFixed(3)}; --seed-glyph: ${glyphComplexity(seed).toFixed(3)}"
+          title="${title}"
+          aria-label="${title}"
+        >
+          <span class="seed-chip-text">${text}</span>
+          <span class="seed-chip-code">${energy}.${glyph}</span>
+        </button>
+      `;
+    })
+    .join("");
 }
 
 function formatBytes(bytes: number): string {

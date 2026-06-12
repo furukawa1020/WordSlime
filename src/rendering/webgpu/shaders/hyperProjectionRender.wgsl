@@ -200,11 +200,11 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     max(0.0, sin((pop_delta.x - pop_delta.y * 0.42) * (48.0 + glyphs.w * 30.0) - time * (2.1 + signature.z))),
     10.0
   );
-  color += vec3f(0.03, 0.45, 0.38) * pop_volume * dimensional_gain * 0.32;
-  color += vec3f(0.52, 1.0, 0.9) * pop_rim * dimensional_gain * (0.2 + signature.x * 0.14);
-  color += vec3f(0.9, 0.16, 1.0) * pop_back_rim * dimensional_gain * (0.08 + glyphs.z * 0.08);
-  color += vec3f(0.18, 0.95, 1.0) * pop_scan * pop_volume * dimensional_gain * 0.12;
-  alpha = max(alpha, clamp((pop_volume * 0.18 + pop_rim * 0.36 + pop_back_rim * 0.12) * dimensional_gain, 0.0, 0.64));
+  color += vec3f(0.04, 0.7, 0.58) * pop_volume * dimensional_gain * 0.86;
+  color += vec3f(0.6, 1.0, 0.92) * pop_rim * dimensional_gain * (0.38 + signature.x * 0.18);
+  color += vec3f(0.94, 0.18, 1.0) * pop_back_rim * dimensional_gain * (0.16 + glyphs.z * 0.1);
+  color += vec3f(0.18, 0.95, 1.0) * pop_scan * pop_volume * dimensional_gain * 0.22;
+  alpha = max(alpha, clamp((pop_volume * 0.34 + pop_rim * 0.52 + pop_back_rim * 0.18) * dimensional_gain, 0.0, 0.76));
   var ray_t = 0.0;
   var hit_position = ro;
   var hit = false;
@@ -238,9 +238,9 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
       diffuse * 0.55 + rim * 0.28
     );
     let glitch_tint = vec3f(0.92, 0.08, 1.0) * step(3.5, mode) * (0.12 + glyphs.z * 0.18);
-    color += (slime_color * (0.22 + diffuse * 0.52) + vec3f(0.2, 0.9, 1.0) * rim * inner + glitch_tint) *
+    color += (slime_color * (0.32 + diffuse * 0.72) + vec3f(0.2, 0.9, 1.0) * rim * inner + glitch_tint) *
       dimensional_gain * depth_fade;
-    alpha = max(alpha, clamp((0.2 + rim * 0.4 + diffuse * 0.18) * dimensional_gain, 0.0, 0.74));
+    alpha = max(alpha, clamp((0.28 + rim * 0.5 + diffuse * 0.24) * dimensional_gain, 0.0, 0.78));
   }
 
   var wire = 0.0;

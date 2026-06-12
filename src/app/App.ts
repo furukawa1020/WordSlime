@@ -774,6 +774,8 @@ function updateHud(
   const passCount = stats?.passCount ?? 3;
   const pipelineCount = stats?.pipelineCount ?? 6;
   const uniformBytes = stats ? formatBytes(stats.uniformBufferBytes) : "pending";
+  const projectionLine =
+    stats && stats.pipelineCount >= 9 ? "proj: 3d/4d wgsl<br />" : "";
   const signatureLine = latest
     ? `sig: ${formatByte(latest.genome.energy)} ${formatByte(latest.genome.viscosity)} ${formatByte(latest.genome.turbulence)} ${formatByte(latest.genome.fertility)}<br />`
     : "";
@@ -796,6 +798,7 @@ function updateHud(
     <strong>${mode.toUpperCase()} / ${quality.toUpperCase()}</strong>
     gpu: webgpu<br />
     pipe: ${pipelineCount}p / ${passCount}pass<br />
+    ${projectionLine}
     wg: ${workgroups.toString(16).toUpperCase().padStart(4, "0")}h<br />
     fb: ${canvasSize}<br />
     vram: ${formatBytes(gpuBytes)}<br />

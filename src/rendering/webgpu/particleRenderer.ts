@@ -2,6 +2,7 @@ import type { AppSettings, SimulationMode } from "../../app/settings";
 import type { WordSeed } from "../../app/state";
 import { configureCanvas, createWebGpuDevice, type WebGpuDevice } from "./device";
 import backgroundRenderShader from "./shaders/backgroundRender.wgsl?raw";
+import hyperProjectionRenderShader from "./shaders/hyperProjectionRender.wgsl?raw";
 import modeSignatureRenderShader from "./shaders/modeSignatureRender.wgsl?raw";
 import particleHaloRenderShader from "./shaders/particleHaloRender.wgsl?raw";
 import particleReactionShader from "./shaders/particleReaction.wgsl?raw";
@@ -110,6 +111,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly computePipeline: GPUComputePipeline;
   private readonly reactionPipeline: GPUComputePipeline;
   private readonly backgroundPipeline: GPURenderPipeline;
+  private readonly hyperProjectionPipeline: GPURenderPipeline;
   private readonly modeSignaturePipeline: GPURenderPipeline;
   private readonly trailFeedbackPipeline: GPURenderPipeline;
   private readonly trailCompositePipeline: GPURenderPipeline;
@@ -118,6 +120,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly computeBindGroup: GPUBindGroup;
   private readonly reactionBindGroup: GPUBindGroup;
   private readonly backgroundBindGroup: GPUBindGroup;
+  private readonly hyperProjectionBindGroup: GPUBindGroup;
   private readonly modeSignatureBindGroup: GPUBindGroup;
   private readonly haloBindGroup: GPUBindGroup;
   private readonly renderBindGroup: GPUBindGroup;
@@ -171,6 +174,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     const backgroundModule = gpu.device.createShaderModule({
       label: "background flow shader",
       code: backgroundRenderShader,
+    });
+    const hyperProjectionModule = gpu.device.createShaderModule({
+      label: "3d 4d hyper projection shader",
+      code: hyperProjectionRenderShader,
     });
     const modeSignatureModule = gpu.device.createShaderModule({
       label: "mode signature shader",
@@ -237,6 +244,38 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         module: backgroundModule,
         entryPoint: "fs_main",
         targets: [{ format: gpu.format }],
+      },
+      primitive: {
+        topology: "triangle-list",
+      },
+    });
+    this.hyperProjectionPipeline = gpu.device.createRenderPipeline({
+      label: "3d 4d hyper projection pipeline",
+      layout: "auto",
+      vertex: {
+        module: hyperProjectionModule,
+        entryPoint: "vs_main",
+      },
+      fragment: {
+        module: hyperProjectionModule,
+        entryPoint: "fs_main",
+        targets: [
+          {
+            format: gpu.format,
+            blend: {
+              color: {
+                srcFactor: "src-alpha",
+                dstFactor: "one",
+                operation: "add",
+              },
+              alpha: {
+                srcFactor: "one",
+                dstFactor: "one-minus-src-alpha",
+                operation: "add",
+              },
+            },
+          },
+        ],
       },
       primitive: {
         topology: "triangle-list",
@@ -410,6 +449,13 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         { binding: 0, resource: { buffer: this.paramsBuffer } },
       ],
     });
+    this.hyperProjectionBindGroup = gpu.device.createBindGroup({
+      label: "3d 4d hyper projection bind group",
+      layout: this.hyperProjectionPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.paramsBuffer } },
+      ],
+    });
     this.modeSignatureBindGroup = gpu.device.createBindGroup({
       label: "mode signature bind group",
       layout: this.modeSignaturePipeline.getBindGroupLayout(0),
@@ -535,7 +581,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       draftStrength: this.draftStrength,
       particleBufferBytes: this.particles.byteLength,
       passCount: 4,
-      pipelineCount: 8,
+      pipelineCount: 9,
       renderCount,
       reservoirComplexity: this.reservoir[3],
       reservoirEnergy: this.reservoir[0],
@@ -714,6 +760,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
 
     renderPass.setPipeline(this.trailCompositePipeline);
     renderPass.setBindGroup(0, this.trailCompositeBindGroups[writeTrailIndex]);
+    renderPass.draw(3);
+
+    renderPass.setPipeline(this.hyperProjectionPipeline);
+    renderPass.setBindGroup(0, this.hyperProjectionBindGroup);
     renderPass.draw(3);
 
     renderPass.end();

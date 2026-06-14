@@ -200,11 +200,44 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     max(0.0, sin((pop_delta.x - pop_delta.y * 0.42) * (48.0 + glyphs.w * 30.0) - time * (2.1 + signature.z))),
     10.0
   );
+  let shadow_delta = pop_delta - vec2f(0.06, -0.18);
+  let contact_shadow = pow(max(0.0, 1.0 - length(shadow_delta * vec2f(0.78, 1.8)) / (pop_radius * 0.92)), 2.2);
+  let front_delta = pop_delta - vec2f(-0.035, 0.045);
+  let back_delta = pop_delta - vec2f(0.055, -0.055);
+  let front_lens = pow(max(0.0, 1.0 - length(front_delta * vec2f(1.08, 0.76)) / (pop_radius * 0.68)), 1.8);
+  let back_shell = 1.0 - smoothstep(
+    0.0,
+    0.04 + glyphs.w * 0.018,
+    abs(length(back_delta * vec2f(0.92, 0.66)) - pop_radius * 0.9)
+  );
+  let slice_a = 1.0 - smoothstep(
+    0.0,
+    0.018 + glyphs.z * 0.01,
+    abs(length(pop_delta * vec2f(1.0, 0.58)) - pop_radius * (0.38 + sin(time * 0.6) * 0.025))
+  );
+  let slice_b = 1.0 - smoothstep(
+    0.0,
+    0.016 + glyphs.w * 0.008,
+    abs(length((pop_delta + vec2f(0.04, -0.06)) * vec2f(0.96, 0.5)) - pop_radius * 0.58)
+  );
+  color += vec3f(0.0, 0.035, 0.036) * contact_shadow * dimensional_gain * 1.4;
   color += vec3f(0.04, 0.7, 0.58) * pop_volume * dimensional_gain * 0.86;
+  color += vec3f(0.36, 1.0, 0.86) * front_lens * dimensional_gain * (0.34 + signature.x * 0.18);
+  color += vec3f(0.08, 0.26, 0.48) * back_shell * dimensional_gain * (0.18 + reservoir.w * 0.16);
   color += vec3f(0.6, 1.0, 0.92) * pop_rim * dimensional_gain * (0.38 + signature.x * 0.18);
   color += vec3f(0.94, 0.18, 1.0) * pop_back_rim * dimensional_gain * (0.16 + glyphs.z * 0.1);
   color += vec3f(0.18, 0.95, 1.0) * pop_scan * pop_volume * dimensional_gain * 0.22;
-  alpha = max(alpha, clamp((pop_volume * 0.34 + pop_rim * 0.52 + pop_back_rim * 0.18) * dimensional_gain, 0.0, 0.76));
+  color += vec3f(0.9, 1.0, 0.96) * slice_a * dimensional_gain * 0.18;
+  color += vec3f(0.14, 0.9, 1.0) * slice_b * dimensional_gain * 0.16;
+  alpha = max(
+    alpha,
+    clamp(
+      (contact_shadow * 0.28 + pop_volume * 0.38 + front_lens * 0.34 + pop_rim * 0.58 + back_shell * 0.24 + pop_back_rim * 0.2) *
+        dimensional_gain,
+      0.0,
+      0.82
+    )
+  );
   var ray_t = 0.0;
   var hit_position = ro;
   var hit = false;

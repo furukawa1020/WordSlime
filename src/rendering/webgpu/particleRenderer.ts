@@ -265,7 +265,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
             blend: {
               color: {
                 srcFactor: "src-alpha",
-                dstFactor: "one",
+                dstFactor: "one-minus-src-alpha",
                 operation: "add",
               },
               alpha: {

@@ -305,8 +305,25 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     }
   }
 
-  let wire_alpha = clamp(wire * (0.08 + dimensional_gain * 0.13), 0.0, 0.56);
-  color += wire_color * (0.18 + dimensional_gain * 0.16);
+  var node = 0.0;
+  var node_color = vec3f(0.0);
+
+  for (var node_id = 0u; node_id < 16u; node_id = node_id + 1u) {
+    let p4 = hyper_vertex(node_id, time + draft_hash * 4.0, signature, glyphs, seed_hash);
+    let p2 = project_hyper(p4, aspect, depth_bias) + hyper_center;
+    let front = smoothstep(-0.75, 0.85, p4.w);
+    let node_radius = 0.012 + front * 0.018 + spawn_impulse * 0.006 + draft_strength * 0.004;
+    let node_glow = smoothstep(node_radius * 3.2, 0.0, length(centered - p2));
+    let node_core = smoothstep(node_radius, 0.0, length(centered - p2));
+
+    node += node_glow * (0.45 + front * 0.72);
+    node_color += node_glow * mix(vec3f(0.1, 0.62, 1.0), vec3f(1.0, 0.22, 0.84), front) +
+      node_core * vec3f(0.82, 1.0, 0.94);
+  }
+
+  let wire_alpha = clamp(wire * (0.12 + dimensional_gain * 0.2) + node * 0.16, 0.0, 0.72);
+  color += wire_color * (0.26 + dimensional_gain * 0.24);
+  color += node_color * (0.16 + dimensional_gain * 0.2);
   alpha = max(alpha, wire_alpha);
 
   if (pointer_active > 0.5) {

@@ -31,6 +31,12 @@ button {
   border: 0;
 }
 
+button:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(174, 255, 226, 0.92);
+  outline-offset: 3px;
+}
+
 .wordslime-shell {
   position: fixed;
   inset: 0;
@@ -403,6 +409,10 @@ button {
   line-height: 1.45;
 }
 
+.summon-input:focus-visible {
+  background: rgba(255, 255, 255, 0.085);
+}
+
 .summon-input::placeholder {
   color: rgba(233, 255, 246, 0.38);
 }
@@ -663,7 +673,7 @@ button {
   }
 
   .input-dock {
-    bottom: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
     left: 12px;
     right: 12px;
     width: auto;

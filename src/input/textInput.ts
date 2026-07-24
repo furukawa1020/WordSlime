@@ -6,6 +6,7 @@ const RAPID_SUBMIT_WINDOW_MS = 1000;
 const RAPID_SUBMIT_LIMIT = 5;
 
 export type TextInputController = {
+  clearQueue(): void;
   destroy(): void;
 };
 
@@ -53,7 +54,7 @@ export function attachTextInput(
     );
     submitTimes.push(now);
 
-    if (submitTimes.length > RAPID_SUBMIT_LIMIT) {
+    if (submitTimes.length >= RAPID_SUBMIT_LIMIT) {
       queuedTexts.push(text);
       onQueued(queuedTexts.length);
 
@@ -113,6 +114,17 @@ export function attachTextInput(
   textarea.addEventListener("compositionend", handleCompositionEnd);
 
   return {
+    clearQueue() {
+      queuedTexts.length = 0;
+      submitTimes = [];
+
+      if (queueTimer !== undefined) {
+        window.clearTimeout(queueTimer);
+        queueTimer = undefined;
+      }
+
+      onQueued(0);
+    },
     destroy() {
       form.removeEventListener("submit", handleSubmit);
       textarea.removeEventListener("keydown", handleKeyDown);

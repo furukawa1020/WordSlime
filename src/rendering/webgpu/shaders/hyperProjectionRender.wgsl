@@ -238,11 +238,14 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
       0.82
     )
   );
+  let projection_region = length(pop_delta * vec2f(0.78, 1.0)) < 1.02;
+
+  if (projection_region) {
   var ray_t = 0.0;
   var hit_position = ro;
   var hit = false;
 
-  for (var step_index = 0; step_index < 38; step_index = step_index + 1) {
+  for (var step_index = 0; step_index < 30; step_index = step_index + 1) {
     hit_position = ro + rd * ray_t;
     let distance = scene_sdf(hit_position, time + draft_hash * 3.0, signature, glyphs, reservoir);
 
@@ -325,6 +328,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   color += wire_color * (0.26 + dimensional_gain * 0.24);
   color += node_color * (0.16 + dimensional_gain * 0.2);
   alpha = max(alpha, wire_alpha);
+  }
 
   if (pointer_active > 0.5) {
     let pop = exp(-pointer_dist * mix(7.2, 5.0, pointer_down));

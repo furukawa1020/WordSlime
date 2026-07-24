@@ -64,6 +64,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   let recoveringRenderer = false;
   let destroyed = false;
   let densityScale = 1;
+  let clearInputQueue = () => {};
   const updateHudView = () => {
     updateHud(hud, state, renderer?.getStats());
   };
@@ -72,7 +73,8 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   };
   const applyParticleBudget = () => {
     renderer?.setParticleBudget(
-      qualityParticleBudgets[state.settings.particleQuality] * densityScale,
+      particleBudgetForViewport(state.settings.particleQuality, canvas) *
+        densityScale,
     );
   };
   const repopulateRenderer = () => {
@@ -99,6 +101,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     const available = await audio.setMode(mode);
 
     if (available && mode !== "off") {
+      audio.updateHum(state);
       showToast(toast, "音が生えました。", 1200);
     } else if (!available) {
       showToast(toast, "Audio unavailable", 1600);
@@ -112,6 +115,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     interactionLayer.resize();
     textDecay.resize();
     renderer?.resize();
+    applyParticleBudget();
   });
   resizeObserver.observe(canvas);
   const pointerCleanup = attachPointerTracking(
@@ -191,6 +195,12 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       saveSettings(state.settings);
       updateHudView();
       showToast(toast, modeLabels[mode], 900);
+    },
+    onResetInput: () => {
+      clearInputQueue();
+      textarea.value = "";
+      textarea.style.height = "";
+      renderer?.setDraftSignature(undefined);
     },
   });
 
@@ -275,7 +285,10 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     const previousSeed = state.seeds.at(-1);
     const seed = createWordSeed(text, state, canvas);
     state.seeds = [...state.seeds, seed].slice(-36);
-    state.totalParticles += seed.particleCount;
+    state.totalParticles = state.seeds.reduce(
+      (total, retainedSeed) => total + retainedSeed.particleCount,
+      0,
+    );
     intro.dataset.hidden = "true";
     showSpawnText(spawnText, text);
     textDecay.play(text, state.settings);
@@ -328,6 +341,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     },
     updateDraftSignature,
   );
+  clearInputQueue = textInput.clearQueue;
 
   updateHudView();
   updateSeedHistoryView();
@@ -338,6 +352,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     getRenderer: () => renderer,
     onHudUpdate: updateHudView,
     onToast: (message, duration) => showToast(toast, message, duration),
+    onQualityChange: applyParticleBudget,
   });
 
   return {
@@ -385,7 +400,7 @@ function renderApp(): string {
         </section>
 
         <div class="controls" aria-label="水槽操作">
-          <button class="icon-button settings-toggle" type="button" title="設定" aria-label="設定" aria-expanded="false">⚙</button>
+          <button class="icon-button settings-toggle" type="button" title="設定" aria-label="設定" aria-expanded="false" aria-controls="settings-panel">⚙</button>
           <button class="icon-button audio-toggle" type="button" title="音をオン" aria-label="音をオン" aria-pressed="false">♪</button>
         </div>
 
@@ -394,7 +409,7 @@ function renderApp(): string {
           <button class="icon-button record-button" type="button" title="WebM録画" aria-label="WebM録画" aria-pressed="false">●</button>
         </div>
 
-        <section class="panel" hidden>
+        <section class="panel" id="settings-panel" hidden>
           <h2>Settings</h2>
           <div class="setting-group">
             <div class="setting-label">挙動</div>
@@ -451,7 +466,7 @@ function renderApp(): string {
           </div>
         </section>
 
-        <div class="hud" aria-live="polite"></div>
+        <div class="hud" aria-hidden="true"></div>
 
         <div class="spawn-text" aria-hidden="true"></div>
 
@@ -499,10 +514,12 @@ type ActionElements = {
   onAudioToggle: () => void;
   onPauseToggle: () => void;
   onModeSelect: (mode: AppState["settings"]["mode"]) => void;
+  onResetInput: () => void;
 };
 
 function attachActions(elements: ActionElements): () => void {
   let recording: ActiveRecording | undefined;
+  let aboutReturnFocus: HTMLElement | null = null;
 
   const handleSave = async () => {
     try {
@@ -558,11 +575,16 @@ function attachActions(elements: ActionElements): () => void {
   };
 
   const handleJsonSave = () => {
-    saveWordSlimeJson({
-      seeds: elements.state.seeds,
-      settings: elements.state.settings,
-    });
-    elements.onToast("標本を保存しました。", 1400);
+    try {
+      saveWordSlimeJson({
+        seeds: elements.state.seeds,
+        settings: elements.state.settings,
+      });
+      elements.onToast("標本を保存しました。", 1400);
+    } catch (error) {
+      console.error(error);
+      elements.onToast("JSON保存に失敗しました。", 1600);
+    }
   };
 
   const handleReset = () => {
@@ -573,6 +595,7 @@ function attachActions(elements: ActionElements): () => void {
     elements.state.seeds = [];
     elements.state.totalParticles = 0;
     elements.state.queuedInputs = 0;
+    elements.onResetInput();
     elements.getRenderer()?.clear();
     elements.getSediment().clear();
     clearCanvas(elements.interactionCanvas);
@@ -582,11 +605,18 @@ function attachActions(elements: ActionElements): () => void {
   };
 
   const handleAboutOpen = () => {
+    aboutReturnFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : elements.aboutButton;
     elements.aboutModal.hidden = false;
+    elements.aboutClose.focus();
   };
 
   const handleAboutClose = () => {
     elements.aboutModal.hidden = true;
+    aboutReturnFocus?.focus();
+    aboutReturnFocus = null;
   };
 
   const handleAboutBackdrop = (event: MouseEvent) => {
@@ -600,6 +630,12 @@ function attachActions(elements: ActionElements): () => void {
   };
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    if (!elements.aboutModal.hidden && event.key === "Tab") {
+      event.preventDefault();
+      elements.aboutClose.focus();
+      return;
+    }
+
     if (event.key === "Escape") {
       if (!elements.aboutModal.hidden) {
         event.preventDefault();
@@ -675,6 +711,7 @@ function attachActions(elements: ActionElements): () => void {
     elements.aboutClose.removeEventListener("click", handleAboutClose);
     elements.aboutModal.removeEventListener("click", handleAboutBackdrop);
     window.removeEventListener("keydown", handleKeyDown);
+    recording?.stop();
   };
 }
 
@@ -914,6 +951,7 @@ type PerformanceMonitorOptions = {
   getRenderer: () => ParticleRenderer | undefined;
   onHudUpdate: () => void;
   onToast: (message: string, duration: number) => void;
+  onQualityChange: () => void;
 };
 
 function startPerformanceMonitor(options: PerformanceMonitorOptions): () => void {
@@ -970,7 +1008,7 @@ function degradeQuality(
   options.state.performance.degraded = true;
   updatePressed(options.panel, "data-quality", next);
   saveSettings(options.state.settings);
-  options.getRenderer()?.setParticleBudget(qualityParticleBudgets[next]);
+  options.onQualityChange();
   options.onToast(`Particle quality lowered: ${qualityLabels[next]}`, 1700);
 }
 
@@ -981,13 +1019,23 @@ function showSpawnText(element: HTMLElement, text: string): void {
   element.dataset.active = "true";
 }
 
+const toastTimers = new WeakMap<HTMLElement, number>();
+
 function showToast(element: HTMLElement, text: string, duration: number): void {
+  const activeTimer = toastTimers.get(element);
+
+  if (activeTimer !== undefined) {
+    window.clearTimeout(activeTimer);
+  }
+
   element.textContent = text;
   element.dataset.active = "true";
 
-  window.setTimeout(() => {
+  const timer = window.setTimeout(() => {
     element.dataset.active = "false";
+    toastTimers.delete(element);
   }, duration);
+  toastTimers.set(element, timer);
 }
 
 function resizeCanvas(canvas: HTMLCanvasElement): void {
@@ -1004,6 +1052,26 @@ function clearCanvas(canvas: HTMLCanvasElement): void {
 
 function applyBackground(shell: HTMLElement, background: string): void {
   shell.dataset.background = background;
+}
+
+function particleBudgetForViewport(
+  quality: AppState["settings"]["particleQuality"],
+  canvas: HTMLCanvasElement,
+): number {
+  const mobileBudgets: Record<
+    AppState["settings"]["particleQuality"],
+    number
+  > = {
+    low: 2000,
+    medium: 5000,
+    high: 16000,
+    insane: 36000,
+  };
+  const isMobileViewport = canvas.clientWidth <= 720;
+
+  return isMobileViewport
+    ? mobileBudgets[quality]
+    : qualityParticleBudgets[quality];
 }
 
 function attachSettingsPanel(

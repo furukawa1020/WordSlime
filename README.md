@@ -8,9 +8,11 @@ It transforms textual features such as length, repetition, punctuation, and rhyt
 
 ## Features
 
-- WebGPU particle simulation
+- WebGPU compute particle simulation with WGSL
+- Volumetric 3D slime and rotating 4D projection
 - Procedural Web Audio
 - Text-to-physics mapping
+- Mouse, touch, pinch, drag, and keyboard interaction
 - Local-only execution
 - PNG, WebM, and JSON export
 - No login, no server, no external API
@@ -33,6 +35,10 @@ Then open:
 http://127.0.0.1:5173/
 ```
 
+Chrome or Edge with WebGPU enabled is recommended. The app intentionally shows
+an unsupported message instead of a reduced Canvas fallback when WebGPU is not
+available.
+
 PowerShell環境で `npm` が実行ポリシーに止められる場合は、次のように実行してください。
 
 ```bash
@@ -46,6 +52,16 @@ npm.cmd run dev
 npm run test
 npm run build
 ```
+
+## Controls
+
+- `Enter`: summon a word (`Shift + Enter` inserts a line break)
+- `Space`: pause or resume
+- `1` to `5`: switch behavior
+- `S`: save PNG
+- `V`: start or stop WebM recording (maximum 30 seconds)
+- `M`: mute
+- `R`: reset the tank
 
 ## Netlify
 

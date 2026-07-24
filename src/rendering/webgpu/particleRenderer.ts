@@ -128,6 +128,9 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private trailViews: GPUTextureView[] = [];
   private trailFeedbackBindGroups: GPUBindGroup[] = [];
   private trailCompositeBindGroups: GPUBindGroup[] = [];
+  private trailWidth = 1;
+  private trailHeight = 1;
+  private trailScale = 0.9;
   private readonly params = new Float32Array(PARAM_FLOATS);
   private readonly signature = new Float32Array(8);
   private readonly draftSignature = new Float32Array(8);
@@ -590,10 +593,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       seedSignalAge: this.signatureAge,
       seedSignalHash: this.signatureHash,
       trailTextureBytes:
-        Math.max(1, this.canvas.width) *
-        Math.max(1, this.canvas.height) *
-        4 *
-        2,
+        this.trailWidth * this.trailHeight * 4 * 2,
       uniformBufferBytes: PARAM_FLOATS * Float32Array.BYTES_PER_ELEMENT,
     };
   }
@@ -620,6 +620,12 @@ class WebGpuParticleRenderer implements ParticleRenderer {
 
   setParticleBudget(maxParticles: number): void {
     this.activeBudget = Math.max(256, Math.min(this.maxParticles, Math.floor(maxParticles)));
+    const nextTrailScale = trailScaleForBudget(this.activeBudget);
+
+    if (Math.abs(nextTrailScale - this.trailScale) > 0.001) {
+      this.trailScale = nextTrailScale;
+      this.createTrailTargets();
+    }
   }
 
   setPointer(pointer: PointerState): void {
@@ -883,9 +889,11 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     }
 
     const size = {
-      width: Math.max(1, this.canvas.width),
-      height: Math.max(1, this.canvas.height),
+      width: Math.max(1, Math.floor(this.canvas.width * this.trailScale)),
+      height: Math.max(1, Math.floor(this.canvas.height * this.trailScale)),
     };
+    this.trailWidth = size.width;
+    this.trailHeight = size.height;
 
     this.trailTextures = [0, 1].map((index) =>
       this.gpu.device.createTexture({
@@ -1282,6 +1290,26 @@ function hashText(text: string): number {
   }
 
   return hash >>> 0;
+}
+
+function trailScaleForBudget(activeBudget: number): number {
+  if (activeBudget <= 2500) {
+    return 0.58;
+  }
+
+  if (activeBudget <= 6000) {
+    return 0.64;
+  }
+
+  if (activeBudget <= 16000) {
+    return 0.72;
+  }
+
+  if (activeBudget <= 50000) {
+    return 0.82;
+  }
+
+  return 0.9;
 }
 
 function clamp01(value: number): number {

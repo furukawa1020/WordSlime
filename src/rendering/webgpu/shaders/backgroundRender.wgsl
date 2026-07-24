@@ -44,7 +44,7 @@ fn fbm(point: vec2f) -> f32 {
   var amplitude = 0.5;
   var frequency = 1.0;
 
-  for (var i = 0; i < 5; i = i + 1) {
+  for (var i = 0; i < 4; i = i + 1) {
     value += noise(point * frequency) * amplitude;
     amplitude *= 0.48;
     frequency *= 2.04;

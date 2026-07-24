@@ -133,7 +133,8 @@ fn project_hyper(point: vec4f, aspect: vec2f, depth_bias: f32) -> vec2f {
   let w_perspective = 1.35 / (2.28 - point.w * 0.42);
   let p3 = point.xyz * w_perspective;
   let z_perspective = 1.18 / (2.34 - p3.z * 0.48 + depth_bias);
-  return p3.xy * z_perspective * vec2f(1.0 / aspect.x, 1.0);
+  let viewport_fit = clamp(aspect.x * 1.16, 0.52, 1.0);
+  return p3.xy * z_perspective * viewport_fit;
 }
 
 @vertex
@@ -154,6 +155,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let mode = params.behavior.x;
   let uv = input.uv;
   let aspect = vec2f(size.x / size.y, 1.0);
+  let projection_scale = clamp(aspect.x * 1.16, 0.52, 1.0);
   let centered = (uv - 0.5) * aspect;
   let pointer_uv = params.pointer.xy / size;
   let pointer_delta = (uv - pointer_uv) * aspect;
@@ -182,7 +184,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let camera_spin = seed_hash * TAU + time * (0.08 + signature.z * 0.12);
   let camera_offset = vec2f(sin(camera_spin), cos(camera_spin * 1.21)) * (0.08 + glyphs.w * 0.06);
   let ro = vec3f(camera_offset.x, camera_offset.y, 2.85 - spawn_impulse * 0.42 - draft_strength * 0.24);
-  let rd = normalize(vec3f(centered * (1.05 + glyphs.x * 0.12), -1.72));
+  let rd = normalize(vec3f(
+    centered / projection_scale * (1.05 + glyphs.x * 0.12),
+    -1.72
+  ));
 
   var color = vec3f(0.0);
   var alpha = 0.0;
@@ -192,7 +197,9 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   );
   let pop_delta = centered - pop_center;
   let pop_depth = length(pop_delta * vec2f(1.0, 0.72));
-  let pop_radius = 0.42 + glyphs.x * 0.12 + reservoir.w * 0.08 + spawn_impulse * 0.05;
+  let pop_radius =
+    (0.42 + glyphs.x * 0.12 + reservoir.w * 0.08 + spawn_impulse * 0.05) *
+    projection_scale;
   let pop_volume = pow(max(0.0, 1.0 - pop_depth / pop_radius), 2.4);
   let pop_rim = 1.0 - smoothstep(0.0, 0.055 + glyphs.z * 0.02, abs(pop_depth - pop_radius * 0.72));
   let pop_back_rim = 1.0 - smoothstep(0.0, 0.045, abs(pop_depth - pop_radius * 1.08));
@@ -238,7 +245,8 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
       0.82
     )
   );
-  let projection_region = length(pop_delta * vec2f(1.0, 1.1)) < 0.62;
+  let projection_region =
+    length(pop_delta * vec2f(1.0, 1.1)) < 0.58 * projection_scale;
 
   if (projection_region) {
   var ray_t = 0.0;

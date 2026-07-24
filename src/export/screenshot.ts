@@ -8,7 +8,7 @@ export async function saveCanvasPng(canvases: HTMLCanvasElement[]): Promise<stri
   link.href = url;
   link.download = filename;
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 
   return filename;
 }

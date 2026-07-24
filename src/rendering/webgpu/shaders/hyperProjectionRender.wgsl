@@ -238,14 +238,14 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
       0.82
     )
   );
-  let projection_region = length(pop_delta * vec2f(0.78, 1.0)) < 1.02;
+  let projection_region = length(pop_delta * vec2f(1.0, 1.1)) < 0.62;
 
   if (projection_region) {
   var ray_t = 0.0;
   var hit_position = ro;
   var hit = false;
 
-  for (var step_index = 0; step_index < 30; step_index = step_index + 1) {
+  for (var step_index = 0; step_index < 24; step_index = step_index + 1) {
     hit_position = ro + rd * ray_t;
     let distance = scene_sdf(hit_position, time + draft_hash * 3.0, signature, glyphs, reservoir);
 
@@ -284,16 +284,22 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let hyper_center = pop_center;
   let wire_width = 0.0055 + glyphs.z * 0.0035 + spawn_impulse * 0.004;
   let depth_bias = -spawn_impulse * 0.44 - draft_strength * 0.18;
+  var hyper_points: array<vec2f, 16>;
+  var hyper_depths: array<f32, 16>;
+
+  for (var point_id = 0u; point_id < 16u; point_id = point_id + 1u) {
+    let point4 = hyper_vertex(point_id, time + draft_hash * 4.0, signature, glyphs, seed_hash);
+    hyper_points[point_id] = project_hyper(point4, aspect, depth_bias) + hyper_center;
+    hyper_depths[point_id] = point4.w;
+  }
 
   for (var vertex_id = 0u; vertex_id < 16u; vertex_id = vertex_id + 1u) {
     for (var axis = 0u; axis < 4u; axis = axis + 1u) {
       let other_id = vertex_id ^ (1u << axis);
 
       if (other_id > vertex_id) {
-        let a4 = hyper_vertex(vertex_id, time + draft_hash * 4.0, signature, glyphs, seed_hash);
-        let b4 = hyper_vertex(other_id, time + draft_hash * 4.0, signature, glyphs, seed_hash);
-        let a = project_hyper(a4, aspect, depth_bias) + hyper_center;
-        let b = project_hyper(b4, aspect, depth_bias) + hyper_center;
+        let a = hyper_points[vertex_id];
+        let b = hyper_points[other_id];
         let distance = segment_distance(centered, a, b);
         let edge = smoothstep(wire_width * 2.5, 0.0, distance);
         let axis_mix = f32(axis) / 3.0;
@@ -312,9 +318,8 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   var node_color = vec3f(0.0);
 
   for (var node_id = 0u; node_id < 16u; node_id = node_id + 1u) {
-    let p4 = hyper_vertex(node_id, time + draft_hash * 4.0, signature, glyphs, seed_hash);
-    let p2 = project_hyper(p4, aspect, depth_bias) + hyper_center;
-    let front = smoothstep(-0.75, 0.85, p4.w);
+    let p2 = hyper_points[node_id];
+    let front = smoothstep(-0.75, 0.85, hyper_depths[node_id]);
     let node_radius = 0.012 + front * 0.018 + spawn_impulse * 0.006 + draft_strength * 0.004;
     let node_glow = smoothstep(node_radius * 3.2, 0.0, length(centered - p2));
     let node_core = smoothstep(node_radius, 0.0, length(centered - p2));

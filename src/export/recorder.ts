@@ -57,6 +57,7 @@ export function startCanvasRecording(
   );
   const chunks: BlobPart[] = [];
   let stopped = false;
+  let failed = false;
   let timeout = 0;
 
   const done = new Promise<string>((resolve, reject) => {
@@ -67,12 +68,18 @@ export function startCanvasRecording(
     });
 
     recorder.addEventListener("error", () => {
+      failed = true;
       cleanup();
       reject(new Error("Recording failed"));
     });
 
     recorder.addEventListener("stop", () => {
       cleanup();
+
+      if (failed) {
+        return;
+      }
+
       const blob = new Blob(chunks, {
         type: recorder.mimeType || "video/webm",
       });
@@ -93,8 +100,13 @@ export function startCanvasRecording(
     }
   };
 
-  timeout = window.setTimeout(stop, MAX_RECORDING_MS);
-  recorder.start(250);
+  try {
+    recorder.start(250);
+    timeout = window.setTimeout(stop, MAX_RECORDING_MS);
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
 
   return {
     stop,
@@ -125,7 +137,7 @@ function downloadBlob(blob: Blob, filename: string): void {
   link.href = url;
   link.download = filename;
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function formatTimestamp(date: Date): string {

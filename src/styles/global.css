@@ -233,25 +233,25 @@ textarea:focus-visible {
 
 .controls {
   position: absolute;
-  right: 16px;
-  top: 16px;
+  right: max(24px, env(safe-area-inset-right));
+  top: max(24px, env(safe-area-inset-top));
   display: flex;
-  gap: 8px;
+  gap: 10px;
   pointer-events: auto;
 }
 
 .quick-actions {
   position: absolute;
-  right: 18px;
-  bottom: 18px;
+  right: max(24px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
   display: flex;
   gap: 8px;
   pointer-events: auto;
 }
 
 .icon-button {
-  width: 38px;
-  height: 38px;
+  width: 50px;
+  height: 50px;
   display: grid;
   place-items: center;
   border: 1px solid rgba(220, 255, 244, 0.13);
@@ -259,6 +259,8 @@ textarea:focus-visible {
   background: rgba(4, 12, 15, 0.42);
   color: rgba(244, 255, 249, 0.84);
   cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
   backdrop-filter: blur(16px);
   transition: background 160ms ease, transform 160ms ease, border-color 160ms ease;
 }
@@ -272,6 +274,12 @@ textarea:focus-visible {
   transform: translateY(1px);
 }
 
+.icon-button:focus-visible {
+  border-color: rgba(126, 255, 220, 0.78);
+  outline: 2px solid rgba(126, 255, 220, 0.34);
+  outline-offset: 3px;
+}
+
 .icon-button[aria-pressed="true"] {
   background: rgba(185, 255, 228, 0.2);
   border-color: rgba(220, 255, 244, 0.28);
@@ -282,15 +290,16 @@ textarea:focus-visible {
   --performance-progress: 0;
   position: relative;
   overflow: hidden;
-  font-size: 12px;
+  width: 62px;
+  font-size: 21px;
 }
 
 .performance-toggle::after {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
-  left: 3px;
-  height: 2px;
+  right: 6px;
+  bottom: 5px;
+  left: 6px;
+  height: 3px;
   border-radius: 1px;
   background: rgba(119, 255, 217, 0.92);
   content: "";
@@ -682,8 +691,9 @@ textarea:focus-visible {
   }
 
   .controls {
-    right: 12px;
-    top: 12px;
+    right: max(18px, env(safe-area-inset-right));
+    top: max(18px, env(safe-area-inset-top));
+    gap: 8px;
   }
 
   .quick-actions {
@@ -691,8 +701,14 @@ textarea:focus-visible {
   }
 
   .icon-button {
-    height: 36px;
-    width: 36px;
+    height: 48px;
+    width: 48px;
+    font-size: 19px;
+  }
+
+  .performance-toggle {
+    width: 60px;
+    font-size: 20px;
   }
 
   .panel {

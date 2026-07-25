@@ -896,24 +896,24 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     renderPass.setBindGroup(0, this.backgroundBindGroup);
     renderPass.draw(3);
 
-    renderPass.setPipeline(this.performanceVolumePipeline);
-    renderPass.setBindGroup(0, this.performanceVolumeBindGroup);
-    renderPass.draw(3);
-
     renderPass.setPipeline(this.modeSignaturePipeline);
     renderPass.setBindGroup(0, this.modeSignatureBindGroup);
-    renderPass.draw(3);
-
-    renderPass.setPipeline(this.performanceScorePipeline);
-    renderPass.setBindGroup(0, this.performanceScoreBindGroup);
     renderPass.draw(3);
 
     renderPass.setPipeline(this.trailCompositePipeline);
     renderPass.setBindGroup(0, this.trailCompositeBindGroups[writeTrailIndex]);
     renderPass.draw(3);
 
+    renderPass.setPipeline(this.performanceVolumePipeline);
+    renderPass.setBindGroup(0, this.performanceVolumeBindGroup);
+    renderPass.draw(3);
+
     renderPass.setPipeline(this.hyperProjectionPipeline);
     renderPass.setBindGroup(0, this.hyperProjectionBindGroup);
+    renderPass.draw(3);
+
+    renderPass.setPipeline(this.performanceScorePipeline);
+    renderPass.setBindGroup(0, this.performanceScoreBindGroup);
     renderPass.draw(3);
 
     renderPass.end();

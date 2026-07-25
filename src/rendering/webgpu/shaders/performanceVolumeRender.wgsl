@@ -38,7 +38,11 @@ fn volume_palette(movement: f32, depth: f32, phase: f32) -> vec3f {
   let spore = mix(vec3f(0.1, 0.52, 0.16), vec3f(0.72, 0.94, 0.32), depth);
 
   if (movement < 2.5) {
-    return mix(cold, electric, movement * 0.16);
+    return mix(
+      cold,
+      electric,
+      0.18 + phase * 0.28 + movement * 0.08
+    );
   }
 
   if (movement < 4.5) {
@@ -188,7 +192,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   }
 
   let volume_alpha = clamp(
-    (1.0 - transmission) * (0.34 + intensity * 0.24),
+    (1.0 - transmission) * (0.38 + intensity * 0.28),
     0.0,
     0.62
   );

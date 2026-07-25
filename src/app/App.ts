@@ -83,9 +83,16 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     updateSeedHistory(seedHistory, state);
   };
   const applyParticleBudget = () => {
-    renderer?.setParticleBudget(
+    const normalBudget =
       particleBudgetForViewport(state.settings.particleQuality, canvas) *
-        densityScale,
+      densityScale;
+    const performanceFloor =
+      canvas.clientWidth <= 720 ? 42_000 : 72_000;
+
+    renderer?.setParticleBudget(
+      latestPerformanceFrame
+        ? Math.max(normalBudget, performanceFloor)
+        : normalBudget,
     );
   };
   const repopulateRenderer = () => {
@@ -356,6 +363,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     shell.dataset.performance = "false";
     audio.stopPerformance();
     renderer?.setPerformanceState(undefined);
+    applyParticleBudget();
     updatePerformanceToggle(autoPerformanceButton, false, 0);
 
     if (!snapshot || destroyed) {
@@ -389,7 +397,11 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       updatePerformanceToggle(autoPerformanceButton, true, 0);
     },
     onFrame: (frame) => {
+      const enteringPerformance = !latestPerformanceFrame;
       latestPerformanceFrame = frame;
+      if (enteringPerformance) {
+        applyParticleBudget();
+      }
       renderer?.setPerformanceState({
         active: true,
         progress: frame.progress,
@@ -527,6 +539,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     state,
     panel,
     getRenderer: () => renderer,
+    isAutoPerformance: () => Boolean(latestPerformanceFrame),
     onHudUpdate: updateHudView,
     onToast: (message, duration) => showToast(toast, message, duration),
     onQualityChange: applyParticleBudget,
@@ -1045,13 +1058,13 @@ function updateHud(
   const budget = stats ? `${stats.activeBudget.toLocaleString()}` : "pending";
   const capacity = stats ? `${stats.capacity.toLocaleString()}` : "pending";
   const passCount = stats?.passCount ?? 3;
-  const pipelineCount = stats?.pipelineCount ?? 10;
+  const pipelineCount = stats?.pipelineCount ?? 11;
   const uniformBytes = stats ? formatBytes(stats.uniformBufferBytes) : "pending";
   const projectionLine =
     stats && stats.pipelineCount >= 9 ? "proj: 3d/4d wgsl<br />" : "";
   const performanceLine =
     stats && stats.performanceActive > 0.5
-      ? `auto: ${formatPerformanceTime(stats.performanceProgress * AUTO_PERFORMANCE_DURATION_MS)} / 03:00 · ${Math.round(stats.performanceIntensity * 100)}%<br />`
+      ? `auto: ${formatPerformanceTime(stats.performanceProgress * AUTO_PERFORMANCE_DURATION_MS)} / 03:00 · ${Math.round(stats.performanceIntensity * 100)}%<br />vol: 48-step raymarch<br />`
       : "";
   const signatureLine = latest
     ? `sig: ${formatByte(latest.genome.energy)} ${formatByte(latest.genome.viscosity)} ${formatByte(latest.genome.turbulence)} ${formatByte(latest.genome.fertility)}<br />`
@@ -1212,6 +1225,7 @@ type PerformanceMonitorOptions = {
   state: AppState;
   panel: HTMLElement;
   getRenderer: () => ParticleRenderer | undefined;
+  isAutoPerformance: () => boolean;
   onHudUpdate: () => void;
   onToast: (message: string, duration: number) => void;
   onQualityChange: () => void;
@@ -1233,7 +1247,12 @@ function startPerformanceMonitor(options: PerformanceMonitorOptions): () => void
       frames = 0;
       last = now;
 
-      if (!options.state.isPaused && fps > 0 && fps < 26) {
+      if (
+        !options.state.isPaused &&
+        !options.isAutoPerformance() &&
+        fps > 0 &&
+        fps < 26
+      ) {
         lowFpsSamples += 1;
       } else {
         lowFpsSamples = 0;

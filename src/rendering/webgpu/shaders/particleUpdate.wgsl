@@ -118,6 +118,35 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   let draft_hash = signal.w;
   let spawn_impulse = exp(-spawn_age * (1.45 + symbol_pressure * 0.8 + global_turbulence * 0.6));
 
+  if (performance_active > 0.5 && particle.life < 0.01) {
+    let virtual_seed = vec2f(
+      f32(index) * 0.7548777,
+      f32(index) * 0.5698403 + performance_movement * 17.0
+    );
+    let random_a = hash(virtual_seed);
+    let random_b = hash(virtual_seed + 19.37);
+    let random_c = hash(virtual_seed + 47.11);
+    let virtual_angle = random_a * TAU;
+    let virtual_radius = sqrt(random_b) * min(size.x, size.y) * 0.48;
+    let virtual_center = vec2f(size.x * 0.5, size.y * 0.52);
+
+    particle.position =
+      virtual_center +
+      vec2f(cos(virtual_angle), sin(virtual_angle) * 0.76) *
+        virtual_radius;
+    particle.velocity =
+      vec2f(-sin(virtual_angle), cos(virtual_angle)) *
+      (18.0 + random_c * 82.0);
+    particle.color = vec4f(
+      mix(vec3f(0.04, 0.72, 0.58), vec3f(0.82, 0.08, 0.72), random_c),
+      0.24 + random_a * 0.34
+    );
+    particle.age = random_b * 1.8;
+    particle.life = 5.0 + random_c * 12.0;
+    particle.radius = 0.7 + random_a * 2.6;
+    particle.energy = 0.28 + random_c * 0.72;
+  }
+
   let center = vec2f(size.x * 0.5, size.y * 0.54);
   let to_center = center - particle.position;
   let center_dist = max(length(to_center), 1.0);
@@ -253,6 +282,32 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
       (18.0 + performance_intensity * 102.0);
     flow += performance_dir * score_gate *
       (80.0 + performance_intensity * 340.0);
+
+    var four_d_force = vec2f(0.0);
+    let normalized_position = particle.position / size - vec2f(0.5);
+
+    for (var dimension = 0; dimension < 6; dimension = dimension + 1) {
+      let dimension_index = f32(dimension);
+      let fourth_axis = sin(
+        time * (0.28 + dimension_index * 0.047) +
+        performance_progress * TAU * (1.0 + dimension_index * 0.31) +
+        f32(index) * (0.0007 + dimension_index * 0.00013)
+      );
+      let field_angle =
+        atan2(normalized_position.y, normalized_position.x) +
+        fourth_axis * (1.2 + dimension_index * 0.17);
+      let field_radius =
+        length(normalized_position) *
+        (8.0 + dimension_index * 2.3) -
+        time * (0.7 + dimension_index * 0.11);
+      four_d_force += vec2f(
+        cos(field_angle + field_radius),
+        sin(field_angle - field_radius)
+      ) * (0.22 + abs(fourth_axis) * 0.28);
+    }
+
+    flow += four_d_force *
+      (26.0 + performance_intensity * 92.0);
 
     if (performance_movement > 2.5 && performance_movement < 4.5) {
       let score_cell = vec2f(

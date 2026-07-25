@@ -519,31 +519,60 @@ type ActionElements = {
 
 function attachActions(elements: ActionElements): () => void {
   let recording: ActiveRecording | undefined;
+  let recordingStarting = false;
+  let frameCaptureBusy = false;
+  let disposed = false;
   let aboutReturnFocus: HTMLElement | null = null;
 
   const handleSave = async () => {
+    if (frameCaptureBusy) {
+      elements.onToast("保存処理中です。", 900);
+      return;
+    }
+
+    frameCaptureBusy = true;
+    setActionPending(elements.saveButtons, true);
+
     try {
       await saveCanvasPng([
         elements.canvas,
         elements.sedimentCanvas,
         elements.interactionCanvas,
         elements.textDecayCanvas,
-      ]);
+      ], {
+        requestFrame: () => elements.getRenderer()?.renderOnce(),
+      });
       elements.onToast("標本を保存しました。", 1400);
     } catch (error) {
       console.error(error);
       elements.onToast("PNG保存に失敗しました。", 1600);
+    } finally {
+      frameCaptureBusy = false;
+      setActionPending(elements.saveButtons, false);
     }
   };
 
-  const handleRecord = () => {
+  const handleRecord = async () => {
     if (recording) {
       recording.stop();
       return;
     }
 
+    if (recordingStarting) {
+      return;
+    }
+
+    if (frameCaptureBusy) {
+      elements.onToast("保存処理中です。", 900);
+      return;
+    }
+
+    frameCaptureBusy = true;
+    recordingStarting = true;
+    setActionPending(elements.recordButtons, true);
+
     try {
-      recording = startCanvasRecording(
+      const activeRecording = await startCanvasRecording(
         [
           elements.canvas,
           elements.sedimentCanvas,
@@ -552,8 +581,20 @@ function attachActions(elements: ActionElements): () => void {
         ],
         {
           audioStream: elements.getAudioStream(),
+          requestFrame: () => elements.getRenderer()?.renderOnce(),
         },
       );
+      frameCaptureBusy = false;
+      recordingStarting = false;
+      setActionPending(elements.recordButtons, false);
+
+      if (disposed) {
+        activeRecording.stop();
+        void activeRecording.done.catch(() => {});
+        return;
+      }
+
+      recording = activeRecording;
       setRecordingButtons(elements.recordButtons, true);
       elements.onToast("REC — slime is being captured", 1400);
       void recording.done
@@ -569,9 +610,18 @@ function attachActions(elements: ActionElements): () => void {
           setRecordingButtons(elements.recordButtons, false);
         });
     } catch (error) {
+      frameCaptureBusy = false;
+      recordingStarting = false;
+      setActionPending(elements.recordButtons, false);
       console.error(error);
-      elements.onToast("録画に失敗しました。PNG保存を使ってください。", 1800);
+
+      if (!disposed) {
+        elements.onToast("録画に失敗しました。PNG保存を使ってください。", 1800);
+      }
     }
+  };
+  const handleRecordClick = () => {
+    void handleRecord();
   };
 
   const handleJsonSave = () => {
@@ -660,7 +710,7 @@ function attachActions(elements: ActionElements): () => void {
       void handleSave();
     } else if (event.key === "v" || event.key === "V") {
       event.preventDefault();
-      handleRecord();
+      void handleRecord();
     } else if (event.key === "r" || event.key === "R") {
       event.preventDefault();
       handleReset();
@@ -688,7 +738,7 @@ function attachActions(elements: ActionElements): () => void {
     button.addEventListener("click", handleSave);
   }
   for (const button of elements.recordButtons) {
-    button.addEventListener("click", handleRecord);
+    button.addEventListener("click", handleRecordClick);
   }
   elements.jsonButton.addEventListener("click", handleJsonSave);
   elements.resetButton.addEventListener("click", handleReset);
@@ -698,12 +748,13 @@ function attachActions(elements: ActionElements): () => void {
   window.addEventListener("keydown", handleKeyDown);
 
   return () => {
+    disposed = true;
     elements.audioButton.removeEventListener("click", handleAudioToggle);
     for (const button of elements.saveButtons) {
       button.removeEventListener("click", handleSave);
     }
     for (const button of elements.recordButtons) {
-      button.removeEventListener("click", handleRecord);
+      button.removeEventListener("click", handleRecordClick);
     }
     elements.jsonButton.removeEventListener("click", handleJsonSave);
     elements.resetButton.removeEventListener("click", handleReset);
@@ -1197,6 +1248,16 @@ function setRecordingButtons(
     } else {
       button.textContent = isRecording ? "Stop" : "WebM";
     }
+  }
+}
+
+function setActionPending(
+  buttons: readonly HTMLButtonElement[],
+  isPending: boolean,
+): void {
+  for (const button of buttons) {
+    button.disabled = isPending;
+    button.setAttribute("aria-busy", String(isPending));
   }
 }
 

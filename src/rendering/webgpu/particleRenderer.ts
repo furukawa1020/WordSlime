@@ -43,6 +43,7 @@ export type ParticleRenderer = {
   setParticleBudget(maxParticles: number): void;
   setPointer(pointer: PointerState): void;
   resize(): void;
+  renderOnce(): void;
   onDeviceLost(callback: (info: GPUDeviceLostInfo) => void): void;
   start(): void;
   stop(): void;
@@ -152,6 +153,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private running = false;
   private frameHandle = 0;
   private lastTime = performance.now();
+  private lastSceneTime = 0;
   private readonly startedAt = performance.now();
   private trailReadIndex = 0;
   private trailNeedsClear = true;
@@ -650,6 +652,14 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.createTrailTargets();
   }
 
+  renderOnce(): void {
+    if (this.running) {
+      return;
+    }
+
+    this.render(0, this.lastSceneTime);
+  }
+
   onDeviceLost(callback: (info: GPUDeviceLostInfo) => void): void {
     this.deviceLostCallback = callback;
   }
@@ -676,7 +686,8 @@ class WebGpuParticleRenderer implements ParticleRenderer {
 
     const dt = Math.max(0, (now - this.lastTime) / 1000);
     this.lastTime = now;
-    this.render(dt, (now - this.startedAt) / 1000);
+    this.lastSceneTime = (now - this.startedAt) / 1000;
+    this.render(dt, this.lastSceneTime);
     this.frameHandle = requestAnimationFrame(this.frame);
   };
 

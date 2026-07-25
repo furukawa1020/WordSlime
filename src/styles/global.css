@@ -31,6 +31,11 @@ button {
   border: 0;
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
 button:focus-visible,
 textarea:focus-visible {
   outline: 2px solid rgba(174, 255, 226, 0.92);

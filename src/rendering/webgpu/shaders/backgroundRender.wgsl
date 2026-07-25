@@ -7,6 +7,7 @@ struct SimParams {
   glyphs: vec4f,
   signal: vec4f,
   reservoir: vec4f,
+  performance: vec4f,
 };
 
 struct VertexOut {
@@ -98,6 +99,12 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let glyphs = params.glyphs;
   let signal = params.signal;
   let reservoir = params.reservoir;
+  let performance = params.performance;
+  let performance_active = performance.x;
+  let performance_progress = performance.y;
+  let performance_intensity = performance.z;
+  let performance_movement = floor(performance.w);
+  let performance_local = fract(performance.w);
   let input_live = smoothstep(0.0, 0.02, signature.x + glyphs.x);
   let genome_noise = signature.z * 0.52 + glyphs.w * 0.34 + glyphs.z * 0.22;
   let memory_live = smoothstep(0.01, 0.18, reservoir.w);
@@ -116,6 +123,16 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     sin(time * (0.09 + reservoir.x * 0.18) + centered.y * (9.0 + reservoir.w * 16.0)),
     cos(time * (0.08 + reservoir.z * 0.16) + centered.x * (8.0 + reservoir.y * 12.0))
   ) * memory_live * (0.035 + reservoir.z * 0.06);
+  flow += vec2f(
+    sin(
+      centered.y * (18.0 + performance_movement * 3.0) -
+      time * (0.6 + performance_intensity * 1.7)
+    ),
+    cos(
+      centered.x * (16.0 + performance_movement * 2.0) +
+      time * (0.48 + performance_intensity * 1.5)
+    )
+  ) * performance_active * (0.025 + performance_intensity * 0.07);
 
   if (mode > 0.5 && mode < 1.5) {
     flow += vec2f(-centered.y, centered.x) * 0.24;
@@ -167,14 +184,48 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     pow(max(0.0, sin(draft_dist * (42.0 + glyphs.w * 36.0) - time * (2.2 + draft_strength * 3.0))), 10.0) *
     exp(-draft_dist * (2.2 + signature.y * 1.4)) *
     draft_strength;
+  let score_radius = 0.12 + performance_local * 0.72;
+  let score_ring = max(
+    0.0,
+    1.0 - abs(length(centered) - score_radius) /
+      (0.012 + performance_intensity * 0.026)
+  ) * performance_active;
+  let score_spokes = pow(
+    max(
+      0.0,
+      sin(
+        atan2(centered.y, centered.x) *
+          (8.0 + performance_movement * 2.0) -
+        time * (1.2 + performance_intensity * 2.0)
+      )
+    ),
+    13.0
+  ) * performance_active;
+  let score_cells = step(
+    0.93 - performance_intensity * 0.08,
+    hash(
+      floor(
+        uv * vec2f(24.0 + performance_movement * 4.0, 14.0) +
+        vec2f(performance_progress * 60.0, performance_movement)
+      )
+    )
+  ) * performance_active;
   shade += data_ribs * (0.06 + glyphs.y * 0.16 + signature.z * 0.08);
   shade += memory_ribs * (0.08 + reservoir.z * 0.16);
   shade += seed_ring * seed_scan * spawn_impulse * (0.34 + signature.x * 0.32);
   shade += draft_ripple * (0.24 + signature.z * 0.24 + glyphs.z * 0.18);
+  shade += score_ring * (0.2 + performance_intensity * 0.42);
+  shade += score_spokes * score_ring * (0.18 + performance_intensity * 0.3);
+  shade += score_cells * performance_intensity * 0.14;
   mode_tint += vec3f(0.0, 0.24, 0.2) * data_ribs * glyphs.w;
   mode_tint += vec3f(0.08, 0.34, 0.22) * memory_ribs * reservoir.w;
   mode_tint += vec3f(0.08, 0.76, 0.7) * seed_ring * spawn_impulse;
   mode_tint += vec3f(0.0, 0.44, 0.36) * draft_ripple;
+  mode_tint += mix(
+    vec3f(0.0, 0.42, 0.36),
+    vec3f(0.52, 0.05, 0.6),
+    fract(performance_movement * 0.37)
+  ) * (score_ring + score_cells * 0.3) * performance_intensity;
 
   if (mode > 0.5 && mode < 1.5) {
     let orbit = abs(length(centered) - 0.28);

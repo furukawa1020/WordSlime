@@ -17,6 +17,7 @@ struct SimParams {
   glyphs: vec4f,
   signal: vec4f,
   reservoir: vec4f,
+  performance: vec4f,
 };
 
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
@@ -93,6 +94,12 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   let glyphs = params.glyphs;
   let signal = params.signal;
   let reservoir = params.reservoir;
+  let performance = params.performance;
+  let performance_active = performance.x;
+  let performance_progress = performance.y;
+  let performance_intensity = performance.z;
+  let performance_movement = floor(performance.w);
+  let performance_local = fract(performance.w);
   let global_energy = signature.x;
   let global_viscosity = signature.y;
   let global_turbulence = signature.z;
@@ -196,6 +203,70 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
       (28.0 + memory_turbulence * 118.0 + memory_complexity * 72.0);
     flow -= memory_dir * memory_well * memory_viscosity *
       (12.0 + memory_energy * 44.0);
+  }
+
+  if (performance_active > 0.5) {
+    let movement_phase =
+      performance_progress * TAU * 3.0 +
+      performance_movement * 1.0472;
+    let conductor_center = vec2f(
+      size.x * (
+        0.5 +
+        sin(time * (0.17 + performance_movement * 0.035) + movement_phase) *
+          (0.08 + performance_intensity * 0.13)
+      ),
+      size.y * (
+        0.52 +
+        cos(time * (0.13 + performance_movement * 0.029) - movement_phase * 0.77) *
+          (0.06 + performance_intensity * 0.1)
+      )
+    );
+    let performance_delta = particle.position - conductor_center;
+    let performance_dist = max(length(performance_delta), 1.0);
+    let performance_dir = performance_delta / performance_dist;
+    let performance_tangent = vec2f(-performance_dir.y, performance_dir.x);
+    let ribbon = sin(
+      performance_dist * (0.011 + performance_movement * 0.0018) -
+      time * (0.9 + performance_intensity * 2.2) +
+      f32(index) * 0.0017
+    );
+    let score_gate = pow(
+      max(
+        0.0,
+        sin(
+          time * (2.5 + performance_movement * 0.74) +
+          performance_local * TAU
+        )
+      ),
+      9.0
+    );
+    let score_well = 1.0 - smoothstep(120.0, 820.0, performance_dist);
+    let direction_flip = mix(
+      -1.0,
+      1.0,
+      step(0.5, fract(performance_movement * 0.618))
+    );
+
+    flow += performance_tangent * ribbon * score_well *
+      (72.0 + performance_intensity * 278.0) * direction_flip;
+    flow -= performance_dir * score_well *
+      (18.0 + performance_intensity * 102.0);
+    flow += performance_dir * score_gate *
+      (80.0 + performance_intensity * 340.0);
+
+    if (performance_movement > 2.5 && performance_movement < 4.5) {
+      let score_cell = vec2f(
+        floor(particle.position.x / 68.0) * 68.0 + 34.0,
+        floor(particle.position.y / 68.0) * 68.0 + 34.0
+      );
+      let score_snap = score_cell - particle.position;
+      let axis = vec2f(
+        sin(time * 3.1 + f32(index) * 0.17),
+        cos(time * 2.7 + f32(index) * 0.13)
+      );
+      flow += score_snap * (1.4 + performance_intensity * 4.6);
+      flow += axis * score_gate * (110.0 + performance_intensity * 360.0);
+    }
   }
 
   if (spawn_impulse > 0.002) {

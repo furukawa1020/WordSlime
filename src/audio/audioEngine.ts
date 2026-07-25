@@ -1,10 +1,12 @@
 import type { AudioMode } from "../app/settings";
 import type { AppState, WordSeed } from "../app/state";
+import type { PerformanceBeatEvent } from "../performance/autoPerformance";
 
 export class AudioEngine {
   private context: AudioContext | undefined;
   private master: GainNode | undefined;
   private recordingDestination: MediaStreamAudioDestinationNode | undefined;
+  private performanceBus: GainNode | undefined;
   private hum: OscillatorNode | undefined;
   private humGain: GainNode | undefined;
   private mode: AudioMode = "off";
@@ -96,6 +98,127 @@ export class AudioEngine {
     osc.stop(now + 0.15);
   }
 
+  playPerformanceBeat(cue: PerformanceBeatEvent): void {
+    if (
+      this.mode === "off" ||
+      !this.context ||
+      !this.performanceBus ||
+      !this.reserveVoice()
+    ) {
+      return;
+    }
+
+    const now = this.context.currentTime;
+    const duration = Math.max(0.08, cue.duration);
+    const osc = this.context.createOscillator();
+    const overtone = cue.accent
+      ? this.context.createOscillator()
+      : undefined;
+    const filter = this.context.createBiquadFilter();
+    const gain = this.context.createGain();
+    const panner = this.context.createStereoPanner();
+
+    osc.type =
+      cue.texture > 0.76
+        ? "square"
+        : cue.texture > 0.46
+          ? "triangle"
+          : "sine";
+    osc.frequency.setValueAtTime(cue.frequency, now);
+    osc.detune.setValueAtTime((cue.texture - 0.5) * 16, now);
+
+    filter.type = cue.texture > 0.68 ? "bandpass" : "lowpass";
+    filter.frequency.setValueAtTime(
+      420 + cue.frequency * (1.8 + cue.texture * 4.2),
+      now,
+    );
+    filter.Q.setValueAtTime(1.4 + cue.texture * 8, now);
+    panner.pan.setValueAtTime(cue.pan, now);
+
+    const peak = 0.012 + cue.intensity * (cue.accent ? 0.052 : 0.032);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(
+      peak,
+      now + Math.min(0.028, duration * 0.18),
+    );
+    gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      now + duration,
+    );
+
+    osc.connect(filter);
+    overtone?.connect(filter);
+    filter.connect(gain);
+    gain.connect(panner);
+    panner.connect(this.performanceBus);
+    osc.addEventListener("ended", () => this.releaseVoice(), { once: true });
+
+    if (overtone) {
+      overtone.type = cue.texture > 0.5 ? "sawtooth" : "sine";
+      overtone.frequency.setValueAtTime(cue.frequency * 2.005, now);
+      overtone.detune.setValueAtTime(7 + cue.texture * 9, now);
+      overtone.start(now);
+      overtone.stop(now + duration);
+    }
+
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+
+  playPerformanceTransition(
+    movementIndex: number,
+    rootFrequency: number,
+    intensity: number,
+  ): void {
+    if (
+      this.mode === "off" ||
+      !this.context ||
+      !this.performanceBus ||
+      !this.reserveVoice()
+    ) {
+      return;
+    }
+
+    const now = this.context.currentTime;
+    const duration = 3.2 + intensity * 2.4;
+    const osc = this.context.createOscillator();
+    const filter = this.context.createBiquadFilter();
+    const gain = this.context.createGain();
+    const panner = this.context.createStereoPanner();
+
+    osc.type = movementIndex % 2 === 0 ? "sine" : "triangle";
+    osc.frequency.setValueAtTime(rootFrequency * 0.5, now);
+    osc.frequency.exponentialRampToValueAtTime(
+      rootFrequency * (movementIndex === 3 ? 2 : 1),
+      now + duration * 0.72,
+    );
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(260 + intensity * 940, now);
+    filter.frequency.exponentialRampToValueAtTime(
+      680 + intensity * 2100,
+      now + duration * 0.68,
+    );
+    panner.pan.setValueAtTime(movementIndex % 2 === 0 ? -0.42 : 0.42, now);
+    panner.pan.linearRampToValueAtTime(
+      movementIndex % 2 === 0 ? 0.42 : -0.42,
+      now + duration,
+    );
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(
+      0.014 + intensity * 0.026,
+      now + 0.7,
+    );
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(panner);
+    panner.connect(this.performanceBus);
+    osc.addEventListener("ended", () => this.releaseVoice(), { once: true });
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
+  }
+
   updateHum(state: AppState): void {
     if (this.mode === "off" || !this.context || !this.humGain || !this.hum) {
       return;
@@ -136,6 +259,7 @@ export class AudioEngine {
       this.master.gain.value = 0;
       this.master.connect(this.context.destination);
       this.master.connect(this.recordingDestination);
+      this.createPerformanceBus();
       this.createHum();
     }
 
@@ -162,6 +286,34 @@ export class AudioEngine {
     filter.connect(this.humGain);
     this.humGain.connect(this.master);
     this.hum.start();
+  }
+
+  private createPerformanceBus(): void {
+    if (!this.context || !this.master) {
+      return;
+    }
+
+    const bus = this.context.createGain();
+    const delay = this.context.createDelay(1);
+    const feedback = this.context.createGain();
+    const wet = this.context.createGain();
+    const wetFilter = this.context.createBiquadFilter();
+
+    bus.gain.value = 0.9;
+    delay.delayTime.value = 0.29;
+    feedback.gain.value = 0.24;
+    wet.gain.value = 0.2;
+    wetFilter.type = "lowpass";
+    wetFilter.frequency.value = 2100;
+
+    bus.connect(this.master);
+    bus.connect(delay);
+    delay.connect(feedback);
+    feedback.connect(delay);
+    delay.connect(wetFilter);
+    wetFilter.connect(wet);
+    wet.connect(this.master);
+    this.performanceBus = bus;
   }
 
   private setMasterVolume(mode: AudioMode): void {

@@ -7,6 +7,7 @@ struct SimParams {
   glyphs: vec4f,
   signal: vec4f,
   reservoir: vec4f,
+  performance: vec4f,
 };
 
 struct VertexOut {
@@ -48,6 +49,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let glyphs = params.glyphs;
   let signal = params.signal;
   let reservoir = params.reservoir;
+  let performance = params.performance;
+  let performance_active = performance.x;
+  let performance_intensity = performance.z;
+  let performance_movement = floor(performance.w);
   let data_noise = signature.z * 0.55 + glyphs.w * 0.35 + glyphs.z * 0.22;
   let spawn_impulse = exp(-signal.x * (1.5 + glyphs.z * 0.7)) * smoothstep(0.0, 0.02, signature.x + glyphs.x);
 
@@ -56,6 +61,15 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     sin(time * (0.39 + glyphs.y * 0.42) + input.uv.y * (16.0 + glyphs.w * 8.0)),
     cos(time * (0.34 + glyphs.z * 0.46) + input.uv.x * (14.0 + signature.z * 9.0))
   ) * mix(0.0028 + data_noise * 0.0019, 0.0009, reduce_motion);
+  let score_center = input.uv - vec2f(0.5);
+  let score_dist = max(length(score_center), 0.002);
+  let score_tangent = vec2f(-score_center.y, score_center.x) / score_dist;
+  let score_wave = sin(
+    score_dist * (46.0 + performance_movement * 7.0) -
+    time * (1.4 + performance_intensity * 3.0)
+  );
+  uv += score_tangent * score_wave * performance_active *
+    (0.0015 + performance_intensity * 0.0055);
 
   if (mode > 0.5 && mode < 1.5) {
     let centered = input.uv - vec2f(0.5);
@@ -84,6 +98,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     reduce_motion
   );
   fade -= glyphs.z * 0.024 + spawn_impulse * 0.035;
+  fade += performance_active * (0.006 + performance_intensity * 0.026);
   if (mode > 0.5 && mode < 1.5) {
     fade *= 0.94;
   } else if (mode > 1.5 && mode < 2.5) {

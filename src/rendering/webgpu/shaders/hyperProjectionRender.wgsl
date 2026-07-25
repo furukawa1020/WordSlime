@@ -7,6 +7,7 @@ struct SimParams {
   glyphs: vec4f,
   signal: vec4f,
   reservoir: vec4f,
+  performance: vec4f,
 };
 
 struct VertexOut {
@@ -151,7 +152,15 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let size = max(params.frame.zw, vec2f(1.0));
   let raw_time = params.frame.y;
   let reduce_motion = params.behavior.y;
-  let time = raw_time * mix(1.0, 0.32, reduce_motion);
+  let performance = params.performance;
+  let performance_active = performance.x;
+  let performance_intensity = performance.z;
+  let performance_movement = floor(performance.w);
+  let performance_speed =
+    1.0 +
+    performance_active * performance_intensity *
+      (0.36 + performance_movement * 0.075);
+  let time = raw_time * mix(1.0, 0.32, reduce_motion) * performance_speed;
   let mode = params.behavior.x;
   let uv = input.uv;
   let aspect = vec2f(size.x / size.y, 1.0);
@@ -176,14 +185,38 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let spawn_impulse = exp(-spawn_age * (1.18 + signature.z * 0.62 + glyphs.z * 0.72)) * input_live;
   let memory_live = smoothstep(0.015, 0.32, reservoir.w);
   let dimensional_gain = clamp(
-    0.18 + input_live * 0.42 + spawn_impulse * 0.68 + draft_strength * 0.5 + memory_live * 0.34,
+    0.18 +
+      input_live * 0.42 +
+      spawn_impulse * 0.68 +
+      draft_strength * 0.5 +
+      memory_live * 0.34 +
+      performance_active * (0.3 + performance_intensity * 0.62),
     0.0,
-    1.35
+    1.8
   );
 
-  let camera_spin = seed_hash * TAU + time * (0.08 + signature.z * 0.12);
-  let camera_offset = vec2f(sin(camera_spin), cos(camera_spin * 1.21)) * (0.08 + glyphs.w * 0.06);
-  let ro = vec3f(camera_offset.x, camera_offset.y, 2.85 - spawn_impulse * 0.42 - draft_strength * 0.24);
+  let camera_spin =
+    seed_hash * TAU +
+    time * (
+      0.08 +
+      signature.z * 0.12 +
+      performance_active * (0.05 + performance_intensity * 0.16)
+    );
+  let camera_offset =
+    vec2f(sin(camera_spin), cos(camera_spin * 1.21)) *
+    (
+      0.08 +
+      glyphs.w * 0.06 +
+      performance_active * performance_intensity * 0.08
+    );
+  let ro = vec3f(
+    camera_offset.x,
+    camera_offset.y,
+    2.85 -
+      spawn_impulse * 0.42 -
+      draft_strength * 0.24 -
+      performance_active * performance_intensity * 0.24
+  );
   let rd = normalize(vec3f(
     centered / projection_scale * (1.05 + glyphs.x * 0.12),
     -1.72
@@ -198,7 +231,13 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let pop_delta = centered - pop_center;
   let pop_depth = length(pop_delta * vec2f(1.0, 0.72));
   let pop_radius =
-    (0.42 + glyphs.x * 0.12 + reservoir.w * 0.08 + spawn_impulse * 0.05) *
+    (
+      0.42 +
+      glyphs.x * 0.12 +
+      reservoir.w * 0.08 +
+      spawn_impulse * 0.05 +
+      performance_active * performance_intensity * 0.1
+    ) *
     projection_scale;
   let pop_volume = pow(max(0.0, 1.0 - pop_depth / pop_radius), 2.4);
   let pop_rim = 1.0 - smoothstep(0.0, 0.055 + glyphs.z * 0.02, abs(pop_depth - pop_radius * 0.72));
@@ -290,8 +329,15 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   var wire = 0.0;
   var wire_color = vec3f(0.0);
   let hyper_center = pop_center;
-  let wire_width = 0.0055 + glyphs.z * 0.0035 + spawn_impulse * 0.004;
-  let depth_bias = -spawn_impulse * 0.44 - draft_strength * 0.18;
+  let wire_width =
+    0.0055 +
+    glyphs.z * 0.0035 +
+    spawn_impulse * 0.004 +
+    performance_active * performance_intensity * 0.0035;
+  let depth_bias =
+    -spawn_impulse * 0.44 -
+    draft_strength * 0.18 -
+    performance_active * performance_intensity * 0.28;
   var hyper_points: array<vec2f, 16>;
   var hyper_depths: array<f32, 16>;
 

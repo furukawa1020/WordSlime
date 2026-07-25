@@ -7,6 +7,7 @@ struct SimParams {
   glyphs: vec4f,
   signal: vec4f,
   reservoir: vec4f,
+  performance: vec4f,
 };
 
 struct VertexOut {

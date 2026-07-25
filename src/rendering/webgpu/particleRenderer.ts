@@ -4,6 +4,7 @@ import { configureCanvas, createWebGpuDevice, type WebGpuDevice } from "./device
 import backgroundRenderShader from "./shaders/backgroundRender.wgsl?raw";
 import hyperProjectionRenderShader from "./shaders/hyperProjectionRender.wgsl?raw";
 import modeSignatureRenderShader from "./shaders/modeSignatureRender.wgsl?raw";
+import performanceScoreRenderShader from "./shaders/performanceScoreRender.wgsl?raw";
 import particleHaloRenderShader from "./shaders/particleHaloRender.wgsl?raw";
 import particleReactionShader from "./shaders/particleReaction.wgsl?raw";
 import particleRenderShader from "./shaders/particleRender.wgsl?raw";
@@ -35,12 +36,22 @@ export type ParticleRendererDraftSignature = {
   hash: number;
 };
 
+export type ParticleRendererPerformanceState = {
+  active: boolean;
+  progress: number;
+  intensity: number;
+  phase: number;
+};
+
 export type ParticleRenderer = {
   addSeed(seed: WordSeed): void;
   clear(): void;
   getStats(): ParticleRendererStats;
   setDraftSignature(draft: ParticleRendererDraftSignature | undefined): void;
   setParticleBudget(maxParticles: number): void;
+  setPerformanceState(
+    performanceState: ParticleRendererPerformanceState | undefined,
+  ): void;
   setPointer(pointer: PointerState): void;
   resize(): void;
   renderOnce(): void;
@@ -61,6 +72,9 @@ export type ParticleRendererStats = {
   particleBufferBytes: number;
   passCount: number;
   pipelineCount: number;
+  performanceActive: number;
+  performanceIntensity: number;
+  performanceProgress: number;
   renderCount: number;
   reservoirComplexity: number;
   reservoirEnergy: number;
@@ -74,7 +88,7 @@ export type ParticleRendererStats = {
 
 const PARTICLE_STRIDE_FLOATS = 12;
 const PARTICLE_STRIDE_BYTES = PARTICLE_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
-const PARAM_FLOATS = 32;
+const PARAM_FLOATS = 36;
 const WORKGROUP_SIZE = 64;
 const TAU = Math.PI * 2;
 
@@ -114,6 +128,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly backgroundPipeline: GPURenderPipeline;
   private readonly hyperProjectionPipeline: GPURenderPipeline;
   private readonly modeSignaturePipeline: GPURenderPipeline;
+  private readonly performanceScorePipeline: GPURenderPipeline;
   private readonly trailFeedbackPipeline: GPURenderPipeline;
   private readonly trailCompositePipeline: GPURenderPipeline;
   private readonly haloPipeline: GPURenderPipeline;
@@ -123,6 +138,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly backgroundBindGroup: GPUBindGroup;
   private readonly hyperProjectionBindGroup: GPUBindGroup;
   private readonly modeSignatureBindGroup: GPUBindGroup;
+  private readonly performanceScoreBindGroup: GPUBindGroup;
   private readonly haloBindGroup: GPUBindGroup;
   private readonly renderBindGroup: GPUBindGroup;
   private trailTextures: GPUTexture[] = [];
@@ -136,6 +152,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly signature = new Float32Array(8);
   private readonly draftSignature = new Float32Array(8);
   private readonly reservoir = new Float32Array(4);
+  private readonly performanceState = new Float32Array(4);
   private pointer: PointerState = {
     x: 0,
     y: 0,
@@ -187,6 +204,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     const modeSignatureModule = gpu.device.createShaderModule({
       label: "mode signature shader",
       code: modeSignatureRenderShader,
+    });
+    const performanceScoreModule = gpu.device.createShaderModule({
+      label: "auto performance score shader",
+      code: performanceScoreRenderShader,
     });
     const haloModule = gpu.device.createShaderModule({
       label: "particle halo shader",
@@ -303,6 +324,38 @@ class WebGpuParticleRenderer implements ParticleRenderer {
               color: {
                 srcFactor: "src-alpha",
                 dstFactor: "one-minus-src-alpha",
+                operation: "add",
+              },
+              alpha: {
+                srcFactor: "one",
+                dstFactor: "one-minus-src-alpha",
+                operation: "add",
+              },
+            },
+          },
+        ],
+      },
+      primitive: {
+        topology: "triangle-list",
+      },
+    });
+    this.performanceScorePipeline = gpu.device.createRenderPipeline({
+      label: "auto performance score pipeline",
+      layout: "auto",
+      vertex: {
+        module: performanceScoreModule,
+        entryPoint: "vs_main",
+      },
+      fragment: {
+        module: performanceScoreModule,
+        entryPoint: "fs_main",
+        targets: [
+          {
+            format: gpu.format,
+            blend: {
+              color: {
+                srcFactor: "src-alpha",
+                dstFactor: "one",
                 operation: "add",
               },
               alpha: {
@@ -468,6 +521,13 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         { binding: 0, resource: { buffer: this.paramsBuffer } },
       ],
     });
+    this.performanceScoreBindGroup = gpu.device.createBindGroup({
+      label: "auto performance score bind group",
+      layout: this.performanceScorePipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.paramsBuffer } },
+      ],
+    });
     this.haloBindGroup = gpu.device.createBindGroup({
       label: "particle halo bind group",
       layout: this.haloPipeline.getBindGroupLayout(0),
@@ -586,7 +646,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       draftStrength: this.draftStrength,
       particleBufferBytes: this.particles.byteLength,
       passCount: 4,
-      pipelineCount: 9,
+      pipelineCount: 10,
+      performanceActive: this.performanceState[0],
+      performanceIntensity: this.performanceState[2],
+      performanceProgress: this.performanceState[1],
       renderCount,
       reservoirComplexity: this.reservoir[3],
       reservoirEnergy: this.reservoir[0],
@@ -628,6 +691,20 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       this.trailScale = nextTrailScale;
       this.createTrailTargets();
     }
+  }
+
+  setPerformanceState(
+    performanceState: ParticleRendererPerformanceState | undefined,
+  ): void {
+    if (!performanceState?.active) {
+      this.performanceState.fill(0);
+      return;
+    }
+
+    this.performanceState[0] = 1;
+    this.performanceState[1] = clamp01(performanceState.progress);
+    this.performanceState[2] = clamp01(performanceState.intensity);
+    this.performanceState[3] = Math.max(0, performanceState.phase);
   }
 
   setPointer(pointer: PointerState): void {
@@ -775,6 +852,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     renderPass.setBindGroup(0, this.modeSignatureBindGroup);
     renderPass.draw(3);
 
+    renderPass.setPipeline(this.performanceScorePipeline);
+    renderPass.setBindGroup(0, this.performanceScoreBindGroup);
+    renderPass.draw(3);
+
     renderPass.setPipeline(this.trailCompositePipeline);
     renderPass.setBindGroup(0, this.trailCompositeBindGroups[writeTrailIndex]);
     renderPass.draw(3);
@@ -819,6 +900,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.params[26] = this.draftStrength;
     this.params[27] = this.draftHash;
     this.params.set(this.reservoir, 28);
+    this.params.set(this.performanceState, 32);
 
     this.gpu.device.queue.writeBuffer(this.paramsBuffer, 0, this.params);
 

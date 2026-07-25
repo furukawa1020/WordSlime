@@ -278,6 +278,31 @@ textarea:focus-visible {
   color: rgba(249, 255, 252, 0.96);
 }
 
+.performance-toggle {
+  --performance-progress: 0;
+  position: relative;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.performance-toggle::after {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  left: 3px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(119, 255, 217, 0.92);
+  content: "";
+  transform: scaleX(var(--performance-progress));
+  transform-origin: left center;
+}
+
+.performance-toggle[aria-pressed="true"] {
+  border-color: rgba(126, 255, 220, 0.62);
+  box-shadow: 0 0 18px rgba(41, 255, 201, 0.18);
+}
+
 .input-dock {
   position: absolute;
   left: 50%;

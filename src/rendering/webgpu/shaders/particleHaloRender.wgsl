@@ -17,6 +17,7 @@ struct SimParams {
   glyphs: vec4f,
   signal: vec4f,
   reservoir: vec4f,
+  performance: vec4f,
 };
 
 struct VertexOut {
@@ -47,10 +48,17 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
   let mode = params.behavior.x;
   let signature = params.signature;
   let glyphs = params.glyphs;
+  let performance = params.performance;
   let base_radius = max(particle.radius, 1.0);
   let velocity_dir = normalize(particle.velocity + vec2f(0.01, 0.003));
   let side_dir = vec2f(-velocity_dir.y, velocity_dir.x);
-  var x_scale = base_radius * (6.2 + particle.energy * 4.4 + signature.x * 1.2 + glyphs.z * 1.8);
+  var x_scale = base_radius * (
+    6.2 +
+    particle.energy * 4.4 +
+    signature.x * 1.2 +
+    glyphs.z * 1.8 +
+    performance.x * performance.z * 2.4
+  );
   var y_scale = x_scale;
   var offset = corner * x_scale;
 
@@ -93,6 +101,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let mode = params.behavior.x;
   let signature = params.signature;
   let glyphs = params.glyphs;
+  let performance = params.performance;
   var dist = length(input.local);
 
   if (mode > 3.5) {
@@ -109,6 +118,11 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   var tint = input.color.rgb * (0.82 + input.energy * 0.42 + signature.x * 0.16);
   tint += vec3f(0.1, 0.72, 0.58) * glyphs.w * 0.08;
   tint += vec3f(0.82, 0.08, 0.58) * glyphs.z * 0.08;
+  tint += mix(
+    vec3f(0.02, 0.74, 0.62),
+    vec3f(0.76, 0.04, 0.7),
+    fract(floor(performance.w) * 0.37)
+  ) * performance.x * performance.z * 0.24;
   var halo_scale = 1.0;
 
   if (mode > 3.5) {

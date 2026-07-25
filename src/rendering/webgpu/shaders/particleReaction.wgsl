@@ -17,6 +17,7 @@ struct SimParams {
   glyphs: vec4f,
   signal: vec4f,
   reservoir: vec4f,
+  performance: vec4f,
 };
 
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;

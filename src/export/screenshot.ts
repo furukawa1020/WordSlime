@@ -1,5 +1,14 @@
-export async function saveCanvasPng(canvases: HTMLCanvasElement[]): Promise<string> {
-  const canvas = composeCanvases(canvases);
+import { openCanvasVideoSource } from "./canvasVideoSource";
+
+export type ScreenshotOptions = {
+  requestFrame?: () => void;
+};
+
+export async function saveCanvasPng(
+  canvases: HTMLCanvasElement[],
+  options: ScreenshotOptions = {},
+): Promise<string> {
+  const canvas = await composeCanvases(canvases, options);
   const blob = await canvasToBlob(canvas);
   const filename = `wordslime_${formatTimestamp(new Date())}.png`;
   const url = URL.createObjectURL(blob);
@@ -13,7 +22,10 @@ export async function saveCanvasPng(canvases: HTMLCanvasElement[]): Promise<stri
   return filename;
 }
 
-function composeCanvases(canvases: HTMLCanvasElement[]): HTMLCanvasElement {
+async function composeCanvases(
+  canvases: HTMLCanvasElement[],
+  options: ScreenshotOptions,
+): Promise<HTMLCanvasElement> {
   const [base] = canvases;
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
@@ -24,9 +36,16 @@ function composeCanvases(canvases: HTMLCanvasElement[]): HTMLCanvasElement {
 
   canvas.width = base.width;
   canvas.height = base.height;
+  const source = await openCanvasVideoSource(base, 30, options.requestFrame);
 
-  for (const source of canvases) {
-    context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  try {
+    context.drawImage(source.video, 0, 0, canvas.width, canvas.height);
+
+    for (const overlay of canvases.slice(1)) {
+      context.drawImage(overlay, 0, 0, canvas.width, canvas.height);
+    }
+  } finally {
+    source.close();
   }
 
   return canvas;

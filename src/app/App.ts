@@ -6,6 +6,11 @@ import { saveCanvasPng } from "../export/screenshot";
 import { mapFeaturesToGenome, particleCountForFeatures } from "../input/genome";
 import { attachTextInput } from "../input/textInput";
 import { extractTextFeatures, type TextFeatures } from "../input/textFeatures";
+import {
+  AUTO_PERFORMANCE_DURATION_MS,
+  AutoPerformanceConductor,
+  type PerformanceFrame,
+} from "../performance/autoPerformance";
 import { InteractionLayer } from "../rendering/interactionLayer";
 import { SedimentLayer } from "../rendering/sedimentLayer";
 import { TextDecayLayer } from "../rendering/textDecayLayer";
@@ -48,6 +53,10 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   const panel = query<HTMLElement>(root, ".panel");
   const settingsToggle = query<HTMLButtonElement>(root, ".settings-toggle");
   const audioButton = query<HTMLButtonElement>(root, ".audio-toggle");
+  const autoPerformanceButton = query<HTMLButtonElement>(
+    root,
+    ".performance-toggle",
+  );
   const saveButtons = queryAll<HTMLButtonElement>(root, ".save-button");
   const recordButtons = queryAll<HTMLButtonElement>(root, ".record-button");
   const jsonButton = query<HTMLButtonElement>(root, ".json-button");
@@ -65,6 +74,8 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   let destroyed = false;
   let densityScale = 1;
   let clearInputQueue = () => {};
+  let latestPerformanceFrame: PerformanceFrame | undefined;
+  let stopAutoPerformance = () => false;
   const updateHudView = () => {
     updateHud(hud, state, renderer?.getStats());
   };
@@ -93,7 +104,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   applyBackground(shell, state.settings.background);
   syncSettingsPanel(panel, state.settings);
   updateAudioToggle(audioButton, state.settings.audioMode);
-  const setAudioMode = async (mode: AudioMode) => {
+  const setAudioMode = async (mode: AudioMode, announce = true) => {
     state.settings.audioMode = mode;
     updatePressed(panel, "data-audio", mode);
     updateAudioToggle(audioButton, mode);
@@ -102,7 +113,9 @@ export function createApp(root: HTMLElement): WordSlimeApp {
 
     if (available && mode !== "off") {
       audio.updateHum(state);
-      showToast(toast, "音が生えました。", 1200);
+      if (announce) {
+        showToast(toast, "音が生えました。", 1200);
+      }
     } else if (!available) {
       showToast(toast, "Audio unavailable", 1600);
     }
@@ -178,6 +191,10 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       void setAudioMode(state.settings.audioMode === "off" ? "soft" : "off");
     },
     onPauseToggle: () => {
+      if (stopAutoPerformance()) {
+        return;
+      }
+
       state.isPaused = !state.isPaused;
       if (state.isPaused) {
         renderer?.stop();
@@ -189,6 +206,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       updateHudView();
     },
     onModeSelect: (mode) => {
+      stopAutoPerformance();
       state.settings.mode = mode;
       updatePressed(panel, "data-mode", mode);
       repopulateRenderer();
@@ -201,6 +219,9 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       textarea.value = "";
       textarea.style.height = "";
       renderer?.setDraftSignature(undefined);
+    },
+    onBeforeReset: () => {
+      stopAutoPerformance();
     },
   });
 
@@ -220,6 +241,16 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       previousRenderer?.stop();
       applyParticleBudget();
       renderer.setDraftSignature(createDraftSignature(textarea.value));
+      if (latestPerformanceFrame) {
+        renderer.setPerformanceState({
+          active: true,
+          progress: latestPerformanceFrame.progress,
+          intensity: latestPerformanceFrame.intensity,
+          phase:
+            latestPerformanceFrame.movementIndex +
+            latestPerformanceFrame.movementProgress * 0.999,
+        });
+      }
       renderer.onDeviceLost((info) => {
         if (destroyed) {
           return;
@@ -307,6 +338,138 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     }
   };
 
+  type PerformanceSnapshot = {
+    mode: AppSettings["mode"];
+    background: AppSettings["background"];
+    audioMode: AudioMode;
+    isPaused: boolean;
+  };
+
+  let performanceSnapshot: PerformanceSnapshot | undefined;
+  let autoPerformanceStarting = false;
+  const conductor = new AutoPerformanceConductor({
+    onStart: () => {
+      shell.dataset.performance = "true";
+      updatePerformanceToggle(autoPerformanceButton, true, 0);
+    },
+    onFrame: (frame) => {
+      latestPerformanceFrame = frame;
+      renderer?.setPerformanceState({
+        active: true,
+        progress: frame.progress,
+        intensity: frame.intensity,
+        phase: frame.movementIndex + frame.movementProgress * 0.999,
+      });
+      updatePerformanceToggle(autoPerformanceButton, true, frame.progress);
+    },
+    onMovement: (frame) => {
+      state.settings.mode = frame.movement.mode;
+      state.settings.background = frame.movement.background;
+      updatePressed(panel, "data-mode", frame.movement.mode);
+      updatePressed(panel, "data-background", frame.movement.background);
+      applyBackground(shell, frame.movement.background);
+      audio.playPerformanceTransition(
+        frame.movementIndex,
+        frame.movement.rootFrequency,
+        frame.intensity,
+      );
+      updateHudView();
+      showToast(toast, frame.movement.label, 1300);
+    },
+    onEvent: (event) => {
+      if (event.kind === "beat") {
+        audio.playPerformanceBeat(event);
+      } else {
+        summonText(event.text);
+      }
+    },
+    onStop: (completed) => {
+      const snapshot = performanceSnapshot;
+      performanceSnapshot = undefined;
+      latestPerformanceFrame = undefined;
+      shell.dataset.performance = "false";
+      renderer?.setPerformanceState(undefined);
+      updatePerformanceToggle(autoPerformanceButton, false, 0);
+
+      if (!snapshot || destroyed) {
+        return;
+      }
+
+      state.settings.mode = snapshot.mode;
+      state.settings.background = snapshot.background;
+      state.isPaused = snapshot.isPaused;
+      updatePressed(panel, "data-mode", snapshot.mode);
+      updatePressed(panel, "data-background", snapshot.background);
+      applyBackground(shell, snapshot.background);
+      void setAudioMode(snapshot.audioMode, false);
+
+      if (snapshot.isPaused) {
+        renderer?.stop();
+      } else {
+        renderer?.start();
+      }
+
+      updateHudView();
+      showToast(
+        toast,
+        completed ? "3分間の演奏が溶けました。" : "自動演奏を止めました。",
+        1500,
+      );
+    },
+  });
+
+  const startAutoPerformance = async () => {
+    if (conductor.isRunning || autoPerformanceStarting) {
+      return;
+    }
+
+    if (!renderer) {
+      showToast(toast, "WebGPUを準備しています。", 1200);
+      return;
+    }
+
+    autoPerformanceStarting = true;
+    performanceSnapshot = {
+      mode: state.settings.mode,
+      background: state.settings.background,
+      audioMode: state.settings.audioMode,
+      isPaused: state.isPaused,
+    };
+    state.isPaused = false;
+    renderer.start();
+    intro.dataset.hidden = "true";
+    updatePerformanceToggle(autoPerformanceButton, true, 0);
+    await setAudioMode(
+      state.settings.audioMode === "off" ? "weird" : state.settings.audioMode,
+      false,
+    );
+    autoPerformanceStarting = false;
+
+    if (destroyed || !performanceSnapshot) {
+      return;
+    }
+
+    conductor.start();
+  };
+
+  const handleAutoPerformanceToggle = () => {
+    if (conductor.isRunning) {
+      conductor.stop(false);
+      return;
+    }
+
+    void startAutoPerformance();
+  };
+  autoPerformanceButton.addEventListener("click", handleAutoPerformanceToggle);
+  stopAutoPerformance = () => {
+    if (!conductor.isRunning) {
+      return false;
+    }
+
+    conductor.stop(false);
+    return true;
+  };
+
   const handleSeedHistoryClick = (event: MouseEvent) => {
     const button = (event.target as Element | null)?.closest<HTMLButtonElement>(
       "button[data-seed-id]",
@@ -365,6 +528,11 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       settingsCleanup();
       actionCleanup();
       performanceCleanup();
+      conductor.stop(false);
+      autoPerformanceButton.removeEventListener(
+        "click",
+        handleAutoPerformanceToggle,
+      );
       renderer?.stop();
       interactionLayer.destroy();
       textDecay.destroy();
@@ -400,6 +568,7 @@ function renderApp(): string {
         </section>
 
         <div class="controls" aria-label="水槽操作">
+          <button class="icon-button performance-toggle" type="button" title="3分自動演奏を再生" aria-label="3分自動演奏を再生" aria-pressed="false">▶</button>
           <button class="icon-button settings-toggle" type="button" title="設定" aria-label="設定" aria-expanded="false" aria-controls="settings-panel">⚙</button>
           <button class="icon-button audio-toggle" type="button" title="音をオン" aria-label="音をオン" aria-pressed="false">♪</button>
         </div>
@@ -515,6 +684,7 @@ type ActionElements = {
   onPauseToggle: () => void;
   onModeSelect: (mode: AppState["settings"]["mode"]) => void;
   onResetInput: () => void;
+  onBeforeReset: () => void;
 };
 
 function attachActions(elements: ActionElements): () => void {
@@ -642,6 +812,7 @@ function attachActions(elements: ActionElements): () => void {
       return;
     }
 
+    elements.onBeforeReset();
     elements.state.seeds = [];
     elements.state.totalParticles = 0;
     elements.state.queuedInputs = 0;
@@ -860,10 +1031,14 @@ function updateHud(
   const budget = stats ? `${stats.activeBudget.toLocaleString()}` : "pending";
   const capacity = stats ? `${stats.capacity.toLocaleString()}` : "pending";
   const passCount = stats?.passCount ?? 3;
-  const pipelineCount = stats?.pipelineCount ?? 6;
+  const pipelineCount = stats?.pipelineCount ?? 10;
   const uniformBytes = stats ? formatBytes(stats.uniformBufferBytes) : "pending";
   const projectionLine =
     stats && stats.pipelineCount >= 9 ? "proj: 3d/4d wgsl<br />" : "";
+  const performanceLine =
+    stats && stats.performanceActive > 0.5
+      ? `auto: ${formatPerformanceTime(stats.performanceProgress * AUTO_PERFORMANCE_DURATION_MS)} / 03:00 · ${Math.round(stats.performanceIntensity * 100)}%<br />`
+      : "";
   const signatureLine = latest
     ? `sig: ${formatByte(latest.genome.energy)} ${formatByte(latest.genome.viscosity)} ${formatByte(latest.genome.turbulence)} ${formatByte(latest.genome.fertility)}<br />`
     : "";
@@ -887,6 +1062,7 @@ function updateHud(
     gpu: webgpu<br />
     pipe: ${pipelineCount}p / ${passCount}pass<br />
     ${projectionLine}
+    ${performanceLine}
     wg: ${workgroups.toString(16).toUpperCase().padStart(4, "0")}h<br />
     fb: ${canvasSize}<br />
     vram: ${formatBytes(gpuBytes)}<br />
@@ -943,6 +1119,28 @@ function formatBytes(bytes: number): string {
   }
 
   return `${Math.round(bytes / 1024).toLocaleString()}kb`;
+}
+
+function formatPerformanceTime(elapsedMs: number): string {
+  const seconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return `${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function updatePerformanceToggle(
+  button: HTMLButtonElement,
+  running: boolean,
+  progress: number,
+): void {
+  const label = running ? "3分自動演奏を停止" : "3分自動演奏を再生";
+  button.textContent = running ? "■" : "▶";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-pressed", String(running));
+  button.style.setProperty(
+    "--performance-progress",
+    String(clamp(progress, 0, 1)),
+  );
 }
 
 function formatByte(value: number): string {

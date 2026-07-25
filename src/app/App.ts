@@ -347,6 +347,42 @@ export function createApp(root: HTMLElement): WordSlimeApp {
 
   let performanceSnapshot: PerformanceSnapshot | undefined;
   let autoPerformanceStarting = false;
+  let autoPerformanceGeneration = 0;
+  const restoreAutoPerformance = (completed: boolean) => {
+    autoPerformanceGeneration += 1;
+    const snapshot = performanceSnapshot;
+    performanceSnapshot = undefined;
+    latestPerformanceFrame = undefined;
+    shell.dataset.performance = "false";
+    audio.stopPerformance();
+    renderer?.setPerformanceState(undefined);
+    updatePerformanceToggle(autoPerformanceButton, false, 0);
+
+    if (!snapshot || destroyed) {
+      return;
+    }
+
+    state.settings.mode = snapshot.mode;
+    state.settings.background = snapshot.background;
+    state.isPaused = snapshot.isPaused;
+    updatePressed(panel, "data-mode", snapshot.mode);
+    updatePressed(panel, "data-background", snapshot.background);
+    applyBackground(shell, snapshot.background);
+    void setAudioMode(snapshot.audioMode, false);
+
+    if (snapshot.isPaused) {
+      renderer?.stop();
+    } else {
+      renderer?.start();
+    }
+
+    updateHudView();
+    showToast(
+      toast,
+      completed ? "3分間の演奏が溶けました。" : "自動演奏を止めました。",
+      1500,
+    );
+  };
   const conductor = new AutoPerformanceConductor({
     onStart: () => {
       shell.dataset.performance = "true";
@@ -383,39 +419,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
         summonText(event.text);
       }
     },
-    onStop: (completed) => {
-      const snapshot = performanceSnapshot;
-      performanceSnapshot = undefined;
-      latestPerformanceFrame = undefined;
-      shell.dataset.performance = "false";
-      renderer?.setPerformanceState(undefined);
-      updatePerformanceToggle(autoPerformanceButton, false, 0);
-
-      if (!snapshot || destroyed) {
-        return;
-      }
-
-      state.settings.mode = snapshot.mode;
-      state.settings.background = snapshot.background;
-      state.isPaused = snapshot.isPaused;
-      updatePressed(panel, "data-mode", snapshot.mode);
-      updatePressed(panel, "data-background", snapshot.background);
-      applyBackground(shell, snapshot.background);
-      void setAudioMode(snapshot.audioMode, false);
-
-      if (snapshot.isPaused) {
-        renderer?.stop();
-      } else {
-        renderer?.start();
-      }
-
-      updateHudView();
-      showToast(
-        toast,
-        completed ? "3分間の演奏が溶けました。" : "自動演奏を止めました。",
-        1500,
-      );
-    },
+    onStop: restoreAutoPerformance,
   });
 
   const startAutoPerformance = async () => {
@@ -429,6 +433,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     }
 
     autoPerformanceStarting = true;
+    const generation = ++autoPerformanceGeneration;
     performanceSnapshot = {
       mode: state.settings.mode,
       background: state.settings.background,
@@ -443,18 +448,21 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       state.settings.audioMode === "off" ? "weird" : state.settings.audioMode,
       false,
     );
-    autoPerformanceStarting = false;
 
-    if (destroyed || !performanceSnapshot) {
+    if (
+      destroyed ||
+      generation !== autoPerformanceGeneration ||
+      !performanceSnapshot
+    ) {
       return;
     }
 
+    autoPerformanceStarting = false;
     conductor.start();
   };
 
   const handleAutoPerformanceToggle = () => {
-    if (conductor.isRunning) {
-      conductor.stop(false);
+    if (stopAutoPerformance()) {
       return;
     }
 
@@ -462,12 +470,18 @@ export function createApp(root: HTMLElement): WordSlimeApp {
   };
   autoPerformanceButton.addEventListener("click", handleAutoPerformanceToggle);
   stopAutoPerformance = () => {
-    if (!conductor.isRunning) {
-      return false;
+    if (conductor.isRunning) {
+      conductor.stop(false);
+      return true;
     }
 
-    conductor.stop(false);
-    return true;
+    if (autoPerformanceStarting && performanceSnapshot) {
+      autoPerformanceStarting = false;
+      restoreAutoPerformance(false);
+      return true;
+    }
+
+    return false;
   };
 
   const handleSeedHistoryClick = (event: MouseEvent) => {

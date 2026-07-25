@@ -24,7 +24,15 @@ export class AudioEngine {
 
     try {
       await this.ensureContext();
-      this.setMasterVolume(mode);
+      if (this.mode === "off") {
+        this.master?.gain.setTargetAtTime(
+          0,
+          this.context?.currentTime ?? 0,
+          0.04,
+        );
+      } else {
+        this.setMasterVolume(this.mode);
+      }
       return true;
     } catch (error) {
       console.error(error);
@@ -109,6 +117,7 @@ export class AudioEngine {
     }
 
     const now = this.context.currentTime;
+    this.activatePerformanceBus(now);
     const duration = Math.max(0.08, cue.duration);
     const osc = this.context.createOscillator();
     const overtone = cue.accent
@@ -180,6 +189,7 @@ export class AudioEngine {
     }
 
     const now = this.context.currentTime;
+    this.activatePerformanceBus(now);
     const duration = 3.2 + intensity * 2.4;
     const osc = this.context.createOscillator();
     const filter = this.context.createBiquadFilter();
@@ -217,6 +227,16 @@ export class AudioEngine {
     osc.addEventListener("ended", () => this.releaseVoice(), { once: true });
     osc.start(now);
     osc.stop(now + duration + 0.02);
+  }
+
+  stopPerformance(): void {
+    if (!this.context || !this.performanceBus) {
+      return;
+    }
+
+    const now = this.context.currentTime;
+    this.performanceBus.gain.cancelScheduledValues(now);
+    this.performanceBus.gain.setTargetAtTime(0.0001, now, 0.025);
   }
 
   updateHum(state: AppState): void {
@@ -323,6 +343,15 @@ export class AudioEngine {
 
     const volume = mode === "soft" ? 0.45 : mode === "weird" ? 0.58 : 0.8;
     this.master.gain.setTargetAtTime(volume, this.context.currentTime, 0.08);
+  }
+
+  private activatePerformanceBus(now: number): void {
+    if (!this.performanceBus) {
+      return;
+    }
+
+    this.performanceBus.gain.cancelScheduledValues(now);
+    this.performanceBus.gain.setTargetAtTime(0.9, now, 0.025);
   }
 
   private playChirp(seed: WordSeed): void {

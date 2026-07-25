@@ -62,7 +62,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     0.0,
     0.78
   );
-  alpha = clamp(alpha + spawn_impulse * luminance * 0.08, 0.0, 0.7);
+  alpha = clamp(alpha + spawn_impulse * luminance * 0.08, 0.0, 0.78);
 
   if (mode > 0.5 && mode < 1.5) {
     color = mix(color, vec3f(0.95, 0.72, 0.22), smoothstep(0.12, 0.9, luminance) * 0.34);

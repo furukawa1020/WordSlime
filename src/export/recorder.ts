@@ -1,3 +1,5 @@
+import { openCanvasVideoSource } from "./canvasVideoSource";
+
 export type ActiveRecording = {
   stop(): void;
   done: Promise<string>;
@@ -5,17 +7,22 @@ export type ActiveRecording = {
 
 export type RecordingOptions = {
   audioStream?: MediaStream;
+  requestFrame?: () => void;
 };
 
 const MAX_RECORDING_MS = 30_000;
 
-export function startCanvasRecording(
+export async function startCanvasRecording(
   canvases: HTMLCanvasElement[],
   options: RecordingOptions = {},
-): ActiveRecording {
+): Promise<ActiveRecording> {
   const [base] = canvases;
 
-  if (!base || !("captureStream" in base) || typeof MediaRecorder === "undefined") {
+  if (
+    !base ||
+    typeof base.captureStream !== "function" ||
+    typeof MediaRecorder === "undefined"
+  ) {
     throw new Error("Recording is unavailable in this browser");
   }
 
@@ -28,12 +35,20 @@ export function startCanvasRecording(
 
   captureCanvas.width = base.width;
   captureCanvas.height = base.height;
+  const source = await openCanvasVideoSource(base, 60, options.requestFrame);
 
   let frameHandle = 0;
   const paint = () => {
     captureContext.clearRect(0, 0, captureCanvas.width, captureCanvas.height);
+    captureContext.drawImage(
+      source.video,
+      0,
+      0,
+      captureCanvas.width,
+      captureCanvas.height,
+    );
 
-    for (const canvas of canvases) {
+    for (const canvas of canvases.slice(1)) {
       captureContext.drawImage(canvas, 0, 0, captureCanvas.width, captureCanvas.height);
     }
 
@@ -42,19 +57,34 @@ export function startCanvasRecording(
 
   paint();
 
-  const stream = captureCanvas.captureStream(60);
-  const audioTracks =
-    options.audioStream?.getAudioTracks().map((track) => track.clone()) ?? [];
+  let stream: MediaStream;
 
-  for (const track of audioTracks) {
-    stream.addTrack(track);
+  try {
+    stream = captureCanvas.captureStream(60);
+    const audioTracks =
+      options.audioStream?.getAudioTracks().map((track) => track.clone()) ?? [];
+
+    for (const track of audioTracks) {
+      stream.addTrack(track);
+    }
+  } catch (error) {
+    cancelAnimationFrame(frameHandle);
+    source.close();
+    throw error;
   }
 
   const mimeType = selectMimeType();
-  const recorder = new MediaRecorder(
-    stream,
-    mimeType ? { mimeType } : undefined,
-  );
+  let recorder: MediaRecorder;
+
+  try {
+    recorder = new MediaRecorder(
+      stream,
+      mimeType ? { mimeType } : undefined,
+    );
+  } catch (error) {
+    cleanupCapture();
+    throw error;
+  }
   const chunks: BlobPart[] = [];
   let stopped = false;
   let failed = false;
@@ -114,9 +144,14 @@ export function startCanvasRecording(
   };
 
   function cleanup(): void {
-    cancelAnimationFrame(frameHandle);
+    cleanupCapture();
     window.clearTimeout(timeout);
+  }
+
+  function cleanupCapture(): void {
+    cancelAnimationFrame(frameHandle);
     stream.getTracks().forEach((track) => track.stop());
+    source.close();
   }
 }
 

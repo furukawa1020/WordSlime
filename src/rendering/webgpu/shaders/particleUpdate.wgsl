@@ -235,6 +235,8 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   }
 
   if (performance_active > 0.5) {
+    let performance_shot = floor(performance_local * 4.0);
+    let shot_progress = fract(performance_local * 4.0);
     let movement_phase =
       performance_progress * TAU * 3.0 +
       performance_movement * 1.0472;
@@ -308,6 +310,76 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
 
     flow += four_d_force *
       (26.0 + performance_intensity * 92.0);
+
+    if (performance_shot > 0.5 && performance_shot < 1.5) {
+      let split_side = select(
+        -1.0,
+        1.0,
+        particle.position.x > size.x * 0.5
+      );
+      let split_center = vec2f(
+        size.x * (0.5 + split_side * 0.25),
+        size.y * (0.5 + sin(time * 0.8 + split_side) * 0.18)
+      );
+      let split_delta = particle.position - split_center;
+      let split_distance = max(length(split_delta), 1.0);
+      let split_direction = split_delta / split_distance;
+      flow += vec2f(-split_direction.y, split_direction.x) *
+        split_side *
+        (210.0 + performance_intensity * 410.0);
+      flow -= split_direction *
+        (54.0 + performance_intensity * 170.0);
+      particle.color.rgb = mix(
+        particle.color.rgb,
+        particle.color.gbr * vec3f(0.84, 1.16, 1.08),
+        min(1.0, dt * 2.8)
+      );
+    } else if (performance_shot > 1.5 && performance_shot < 2.5) {
+      let lattice_size = 34.0 + performance_movement * 5.0;
+      let lattice_cell =
+        floor(particle.position / lattice_size + vec2f(0.5)) *
+        lattice_size;
+      let lattice_pull = lattice_cell - particle.position;
+      let fracture = vec2f(
+        sin(particle.position.y * 0.031 + time * 4.2),
+        cos(particle.position.x * 0.027 - time * 3.7)
+      );
+      flow += lattice_pull * (4.2 + performance_intensity * 7.4);
+      flow += fracture *
+        (160.0 + performance_intensity * 430.0) *
+        score_gate;
+      particle.color.rgb = mix(
+        particle.color.rgb,
+        particle.color.brg * vec3f(1.2, 0.82, 1.08),
+        min(1.0, dt * 3.2)
+      );
+    } else if (performance_shot > 2.5) {
+      let shot_center = vec2f(
+        size.x * (0.5 + sin(time * 1.7) * 0.12),
+        size.y * (0.5 + cos(time * 1.3) * 0.12)
+      );
+      let shot_delta = particle.position - shot_center;
+      let shot_distance = max(length(shot_delta), 1.0);
+      let shot_direction = shot_delta / shot_distance;
+      let shock_ring = pow(
+        max(0.0, sin(shot_distance * 0.032 - time * 5.4)),
+        14.0
+      );
+      flow -= shot_direction *
+        (130.0 + performance_intensity * 460.0);
+      flow += shot_direction *
+        shock_ring *
+        (480.0 + performance_intensity * 920.0);
+      particle.color.rgb = mix(
+        particle.color.rgb,
+        vec3f(
+          1.08 - particle.color.b * 0.35,
+          0.18 + particle.color.r * 0.72,
+          1.16 - particle.color.g * 0.28
+        ),
+        min(1.0, dt * 2.6)
+      );
+    }
 
     if (performance_movement < 0.5) {
       let root_lane =
@@ -398,6 +470,49 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
         (120.0 + performance_intensity * 260.0);
       flow += collapse_direction * score_gate *
         (220.0 + performance_intensity * 520.0);
+    }
+
+    let stage_center = vec2f(size.x * 0.5, size.y * 0.5);
+    let from_stage = particle.position - stage_center;
+    let stage_distance = max(length(from_stage), 1.0);
+    let stage_direction = from_stage / stage_distance;
+    let stage_tangent = vec2f(-stage_direction.y, stage_direction.x);
+    let cut_impulse = exp(-shot_progress * 18.0);
+
+    flow += stage_direction * cut_impulse *
+      (260.0 + performance_intensity * 620.0);
+
+    if (performance_shot < 0.5) {
+      flow += stage_tangent *
+        sin(stage_distance * 0.024 - time * 3.4) *
+        (80.0 + performance_intensity * 190.0);
+    } else if (performance_shot < 1.5) {
+      let scan_field = vec2f(
+        sin(particle.position.y * 0.031 + time * 4.1),
+        cos(particle.position.x * 0.019 - time * 2.7)
+      );
+      flow += scan_field *
+        (150.0 + performance_intensity * 310.0);
+    } else if (performance_shot < 2.5) {
+      let cell_size = 74.0 + performance_movement * 9.0;
+      let cell_center =
+        floor(particle.position / cell_size + vec2f(0.5)) * cell_size;
+      flow += (cell_center - particle.position) *
+        (1.8 + performance_intensity * 5.2);
+      flow += stage_tangent * score_gate *
+        (180.0 + performance_intensity * 420.0);
+    } else {
+      let quadrant = sign(from_stage);
+      let split_target =
+        stage_center +
+        quadrant * vec2f(size.x * 0.22, size.y * 0.17);
+      let to_split = split_target - particle.position;
+      let split_distance = max(length(to_split), 1.0);
+      flow += to_split / split_distance *
+        (220.0 + performance_intensity * 480.0);
+      flow += vec2f(-to_split.y, to_split.x) / split_distance *
+        sin(time * 5.2 + f32(index) * 0.021) *
+        (140.0 + performance_intensity * 330.0);
     }
   }
 

@@ -81,6 +81,38 @@ fn scene_distance(
   intensity: f32
 ) -> vec2f {
   var position = source_position;
+  let shot_phase = fract(params.performance.w) * 4.0;
+  let shot = floor(shot_phase);
+  let shot_progress = fract(shot_phase);
+
+  if (shot > 0.5 && shot < 1.5) {
+    let tilted_yz = rotate2(
+      position.yz,
+      0.72 + sin(time * 0.13) * 0.18
+    );
+    position = vec3f(position.x, tilted_yz.x, tilted_yz.y);
+  } else if (shot > 1.5 && shot < 2.5) {
+    let twisted_xy = rotate2(
+      position.xy,
+      position.z * (0.52 + intensity * 0.28) +
+        shot_progress * 0.42
+    );
+    position = vec3f(
+      twisted_xy,
+      position.z + sin(position.x * 2.8 + time * 0.34) * 0.09
+    );
+  } else if (shot > 2.5) {
+    position.xy =
+      abs(position.xy) -
+      vec2f(
+        0.18 + sin(time * 0.23) * 0.08,
+        0.12 + cos(time * 0.19) * 0.06
+      );
+    position.xz = rotate2(
+      position.xz,
+      -0.46 + shot_progress * 0.92
+    );
+  }
 
   if (movement < 0.5) {
     let cell = floor(position.xz / 0.72 + vec2f(0.5));
@@ -399,6 +431,9 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let time = params.frame.y;
   let movement = floor(params.performance.w);
   let local_progress = fract(params.performance.w);
+  let shot = floor(local_progress * 4.0);
+  let shot_progress = fract(local_progress * 4.0);
+  let stage_time = time + shot * 4.7;
   let intensity = params.performance.z;
   var camera_origin = vec3f(0.0, 0.05, 3.25);
   var camera_target = vec3f(0.0);
@@ -444,17 +479,78 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     );
   }
 
-  let ray_direction = camera_ray(camera_origin, camera_target, screen * 0.78);
+  var camera_offset = camera_origin - camera_target;
+  var staged_screen = screen;
+  var lens = 0.78;
+
+  if (shot < 0.5) {
+    camera_offset *= 1.18 - shot_progress * 0.08;
+    lens = 0.96;
+  } else if (shot < 1.5) {
+    let close_rotation = rotate2(camera_offset.xz, 0.48);
+    camera_offset = vec3f(
+      close_rotation.x,
+      camera_offset.y * 0.58 + 0.16,
+      close_rotation.y
+    ) * (0.7 - shot_progress * 0.08);
+    camera_target += vec3f(
+      sin(time * 0.31) * 0.16,
+      cos(time * 0.27) * 0.12,
+      0.0
+    );
+    staged_screen = rotate2(screen, -0.08);
+    lens = 0.66;
+  } else if (shot < 2.5) {
+    let overhead_rotation = rotate2(camera_offset.xz, 1.18);
+    let orbit_radius = max(length(camera_offset), 1.0);
+    camera_offset = vec3f(
+      overhead_rotation.x * 0.68,
+      orbit_radius * (0.62 + shot_progress * 0.12),
+      overhead_rotation.y * 0.68
+    );
+    camera_target += vec3f(0.0, -0.2, sin(time * 0.19) * 0.16);
+    staged_screen = rotate2(screen, 0.22 + shot_progress * 0.18);
+    lens = 0.86;
+  } else {
+    let tracking_rotation = rotate2(
+      camera_offset.xz,
+      -0.94 + shot_progress * 0.38
+    );
+    camera_offset = vec3f(
+      tracking_rotation.x,
+      camera_offset.y * 0.34 - 0.24,
+      tracking_rotation.y
+    ) * 0.9;
+    camera_target += vec3f(
+      cos(time * 0.23) * 0.24,
+      sin(time * 0.29) * 0.15,
+      0.0
+    );
+    staged_screen = rotate2(screen, -0.16);
+    lens = 1.08;
+  }
+
+  camera_origin = camera_target + camera_offset;
+  let ray_direction = camera_ray(
+    camera_origin,
+    camera_target,
+    staged_screen * lens
+  );
   var travel = 0.0;
   var hit_position = camera_origin;
   var hit_material = -1.0;
   var hit = false;
+  let step_limit = select(80, 96, size.x >= 1000.0);
 
-  for (var step_index = 0; step_index < 64; step_index = step_index + 1) {
+  for (var step_index = 0; step_index < 96; step_index = step_index + 1) {
+    if (step_index >= step_limit) {
+      break;
+    }
+
     hit_position = camera_origin + ray_direction * travel;
     let scene = scene_distance(
       hit_position,
-      time,
+      stage_time,
       movement,
       intensity
     );
@@ -478,7 +574,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
 
   let normal = scene_normal(
     hit_position,
-    time,
+    stage_time,
     movement,
     intensity
   );
@@ -488,7 +584,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let secondary = max(0.0, dot(normal, secondary_light));
   let facing = clamp(dot(normal, -ray_direction), 0.0, 1.0);
   let fresnel = pow(1.0 - facing, 3.0);
-  let material = material_color(hit_material, hit_position, time);
+  let material = material_color(hit_material, hit_position, stage_time);
   let pulse = pow(
     max(0.0, sin(time * (2.1 + movement * 0.47))),
     9.0

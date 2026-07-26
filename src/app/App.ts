@@ -87,7 +87,11 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       particleBudgetForViewport(state.settings.particleQuality, canvas) *
       densityScale;
     const performanceFloor =
-      canvas.clientWidth <= 720 ? 42_000 : 72_000;
+      canvas.clientWidth <= 720
+        ? 48_000
+        : canvas.clientWidth < 1000
+          ? 96_000
+          : 120_000;
 
     renderer?.setParticleBudget(
       latestPerformanceFrame
@@ -434,7 +438,10 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     onStop: restoreAutoPerformance,
   });
 
-  const startAutoPerformance = async (startAtMs = 0) => {
+  const startAutoPerformance = async (
+    startAtMs = 0,
+    enableAudio = true,
+  ) => {
     if (conductor.isRunning || autoPerformanceStarting) {
       return;
     }
@@ -456,10 +463,12 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     renderer.start();
     intro.dataset.hidden = "true";
     updatePerformanceToggle(autoPerformanceButton, true, 0);
-    await setAudioMode(
-      state.settings.audioMode === "off" ? "weird" : state.settings.audioMode,
-      false,
-    );
+    if (enableAudio) {
+      await setAudioMode(
+        state.settings.audioMode === "off" ? "weird" : state.settings.audioMode,
+        false,
+      );
+    }
 
     if (
       destroyed ||
@@ -504,8 +513,29 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       stopAutoPerformance();
       void startAutoPerformance(
         clamp(elapsedMs, 0, AUTO_PERFORMANCE_DURATION_MS - 1),
+        false,
       );
     };
+
+    const debugStartAtValue = new URLSearchParams(window.location.search).get(
+      "performanceAt",
+    );
+    const debugStartAt =
+      debugStartAtValue === null ? Number.NaN : Number(debugStartAtValue);
+
+    if (Number.isFinite(debugStartAt)) {
+      const startWhenRendererIsReady = () => {
+        if (renderer) {
+          performanceDebugWindow.__wordSlimeStartPerformanceAt?.(debugStartAt);
+          return;
+        }
+
+        if (!destroyed) {
+          requestAnimationFrame(startWhenRendererIsReady);
+        }
+      };
+      requestAnimationFrame(startWhenRendererIsReady);
+    }
   }
 
   const handleSeedHistoryClick = (event: MouseEvent) => {
@@ -1075,9 +1105,13 @@ function updateHud(
   const uniformBytes = stats ? formatBytes(stats.uniformBufferBytes) : "pending";
   const projectionLine =
     stats && stats.pipelineCount >= 9 ? "proj: 3d/4d wgsl<br />" : "";
+  const raymarchLine =
+    stats && stats.canvasWidth >= 1000
+      ? "96-sdf + 64-vol"
+      : "80-sdf + 56-vol";
   const performanceLine =
     stats && stats.performanceActive > 0.5
-      ? `auto: ${formatPerformanceTime(stats.performanceProgress * AUTO_PERFORMANCE_DURATION_MS)} / 03:00 · ${Math.round(stats.performanceIntensity * 100)}%<br />world: 64-sdf + 48-vol<br />`
+      ? `auto: ${formatPerformanceTime(stats.performanceProgress * AUTO_PERFORMANCE_DURATION_MS)} / 03:00 / ${Math.round(stats.performanceIntensity * 100)}%<br />world: ${raymarchLine} / 24 shots<br />sim: ${stats.computeSubsteps}x compute<br />`
       : "";
   const signatureLine = latest
     ? `sig: ${formatByte(latest.genome.energy)} ${formatByte(latest.genome.viscosity)} ${formatByte(latest.genome.turbulence)} ${formatByte(latest.genome.fertility)}<br />`

@@ -31,6 +31,15 @@ fn hash(point: vec2f) -> f32 {
   return fract((q.x + q.y) * q.z);
 }
 
+fn rotate2(point: vec2f, angle: f32) -> vec2f {
+  let sine = sin(angle);
+  let cosine = cos(angle);
+  return vec2f(
+    point.x * cosine - point.y * sine,
+    point.x * sine + point.y * cosine
+  );
+}
+
 fn line(value: f32, center: f32, width: f32) -> f32 {
   return 1.0 - smoothstep(0.0, width, abs(value - center));
 }
@@ -79,8 +88,21 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let movement_phase = params.performance.w;
   let movement = floor(movement_phase);
   let local_progress = fract(movement_phase);
+  let shot = floor(local_progress * 4.0);
+  let shot_progress = fract(local_progress * 4.0);
   let aspect = vec2f(size.x / size.y, 1.0);
-  let centered = (input.uv - 0.5) * aspect;
+  var centered = (input.uv - 0.5) * aspect;
+
+  if (shot > 0.5 && shot < 1.5) {
+    centered = rotate2(centered, -0.42);
+  } else if (shot > 1.5 && shot < 2.5) {
+    centered = rotate2(centered * 1.42, 0.18 + shot_progress * 0.34);
+  } else if (shot > 2.5) {
+    centered =
+      abs(rotate2(centered, -0.2)) -
+      vec2f(0.22, 0.14);
+  }
+
   let distance = length(centered);
   let angle = atan2(centered.y, centered.x);
   let beat = pow(max(0.0, sin(time * (2.2 + movement * 0.44))), 12.0);
@@ -124,10 +146,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     cell_weight = 0.02;
   }
 
-  for (var index = 0; index < 12; index = index + 1) {
+  for (var index = 0; index < 18; index = index + 1) {
     let fi = f32(index);
     let radius =
-      0.09 + fi * 0.037 +
+      0.06 + fi * 0.027 +
       sin(time * (0.13 + fi * 0.007) + fi * 1.7) * 0.012;
     let broken =
       pow(max(0.0, sin(angle * (3.0 + movement + fi * 0.18) - time * (0.32 + intensity) + fi)), 10.0);
@@ -136,7 +158,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     score_color +=
       orbit *
       orbit_weight *
-      mix(color_a, color_b, fi / 11.0);
+      mix(color_a, color_b, fi / 17.0);
   }
 
   let time_axis = input.uv.x - progress;
@@ -156,6 +178,12 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let radial_ticks =
     pow(max(0.0, sin(angle * (18.0 + movement * 5.0) + local_progress * TAU)), 18.0) *
     line(distance, 0.34 + intensity * 0.08, 0.075);
+  let cut_flash =
+    exp(-shot_progress * 22.0) *
+    step(0.5, shot);
+  let cut_shutter =
+    line(fract(input.uv.y + shot_progress * 1.8), 0.5, 0.08) *
+    cut_flash;
 
   score_color +=
     color_a *
@@ -178,13 +206,18 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     radial_ticks *
     radial_weight *
     (0.26 + beat * 0.42);
+  score_color +=
+    mix(color_a, vec3f(1.0), 0.54) *
+    (cut_flash * 0.24 + cut_shutter * 0.72);
   let alpha = clamp(
     score * (0.025 + intensity * 0.035) +
       playhead * playhead_weight * 0.34 +
       ledger * ledger_weight * 0.16 +
       temporal_cells * cell_weight * 0.16 +
       hyper_ribbon * ribbon_weight * 0.26 +
-      radial_ticks * radial_weight * 0.3,
+      radial_ticks * radial_weight * 0.3 +
+      cut_flash * 0.18 +
+      cut_shutter * 0.42,
     0.0,
     0.58
   );

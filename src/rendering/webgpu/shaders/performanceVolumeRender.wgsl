@@ -161,6 +161,9 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let movement_phase = params.performance.w;
   let movement = floor(movement_phase);
   let local_progress = fract(movement_phase);
+  let shot = floor(local_progress * 4.0);
+  let shot_progress = fract(local_progress * 4.0);
+  let stage_time = time + shot * 3.1;
   let intensity = params.performance.z;
   let screen = vec2f(
     (input.uv.x * 2.0 - 1.0) * aspect,
@@ -172,19 +175,40 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     cos(camera_orbit * 0.73) * 0.12,
     2.62
   );
-  var ray_direction = normalize(vec3f(screen * 0.72, -1.48));
+  var staged_screen = screen;
+
+  if (shot < 0.5) {
+    ray_origin.z += 0.38;
+    staged_screen *= 1.08;
+  } else if (shot < 1.5) {
+    ray_origin += vec3f(0.28, -0.14, -0.58 - shot_progress * 0.18);
+    staged_screen = rotate2(screen, -0.1) * 0.78;
+  } else if (shot < 2.5) {
+    ray_origin += vec3f(-0.34, 0.52, -0.06);
+    staged_screen = rotate2(screen, 0.34 + shot_progress * 0.16) * 0.92;
+  } else {
+    ray_origin += vec3f(-0.46 + shot_progress * 0.72, -0.26, 0.5);
+    staged_screen = rotate2(screen, -0.2) * 1.2;
+  }
+
+  var ray_direction = normalize(vec3f(staged_screen * 0.72, -1.48));
   let camera_rotation = rotate2(ray_direction.xz, sin(camera_orbit) * 0.08);
   ray_direction = vec3f(camera_rotation.x, ray_direction.y, camera_rotation.y);
 
   var accumulated_color = vec3f(0.0);
   var transmission = 1.0;
   var travel = 0.0;
+  let step_limit = select(56, 64, size.x >= 1000.0);
 
-  for (var step_index = 0; step_index < 48; step_index = step_index + 1) {
+  for (var step_index = 0; step_index < 64; step_index = step_index + 1) {
+    if (step_index >= step_limit) {
+      break;
+    }
+
     let position = ray_origin + ray_direction * travel;
     let field_sample = volume_field(
       position,
-      time + local_progress * 2.0,
+      stage_time + shot_progress * 2.0,
       movement,
       intensity
     );

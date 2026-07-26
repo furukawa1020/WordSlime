@@ -68,6 +68,7 @@ export type ParticleRendererStats = {
   capacity: number;
   canvasHeight: number;
   canvasWidth: number;
+  computeSubsteps: number;
   computeWorkgroups: number;
   draftHash: number;
   draftStrength: number;
@@ -92,8 +93,9 @@ const PARTICLE_STRIDE_FLOATS = 12;
 const PARTICLE_STRIDE_BYTES = PARTICLE_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const PARAM_FLOATS = 36;
 const WORKGROUP_SIZE = 64;
-const PERFORMANCE_PARTICLES_DESKTOP = 72000;
-const PERFORMANCE_PARTICLES_MOBILE = 42000;
+const PERFORMANCE_PARTICLES_DESKTOP = 120000;
+const PERFORMANCE_PARTICLES_COMPACT = 96000;
+const PERFORMANCE_PARTICLES_MOBILE = 48000;
 const TAU = Math.PI * 2;
 
 const modeValues: Record<SimulationMode, number> = {
@@ -728,6 +730,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
 
   getStats(): ParticleRendererStats {
     const renderCount = this.renderCount();
+    const computeSubsteps = this.computeSubsteps();
 
     return {
       activeBudget: this.activeBudget,
@@ -735,11 +738,13 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       capacity: this.maxParticles,
       canvasHeight: this.canvas.height,
       canvasWidth: this.canvas.width,
-      computeWorkgroups: Math.ceil(renderCount / WORKGROUP_SIZE),
+      computeSubsteps,
+      computeWorkgroups:
+        Math.ceil(renderCount / WORKGROUP_SIZE) * computeSubsteps * 2,
       draftHash: this.draftHash,
       draftStrength: this.draftStrength,
       particleBufferBytes: this.particles.byteLength,
-      passCount: 4,
+      passCount: computeSubsteps * 2 + 2,
       pipelineCount: 12,
       performanceActive: this.performanceState[0],
       performanceIntensity: this.performanceState[2],
@@ -863,7 +868,8 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   };
 
   private render(dt: number, time: number): void {
-    this.writeParams(dt, time);
+    const computeSubsteps = this.computeSubsteps();
+    this.writeParams(dt / computeSubsteps, time);
 
     const encoder = this.gpu.device.createCommandEncoder({
       label: "particle frame encoder",
@@ -872,25 +878,27 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     const renderCount = this.renderCount();
 
     if (renderCount > 0) {
-      const computePass = encoder.beginComputePass({
-        label: "particle update pass",
-      });
-      computePass.setPipeline(this.computePipeline);
-      computePass.setBindGroup(0, this.computeBindGroup);
-      computePass.dispatchWorkgroups(
-        Math.ceil(renderCount / WORKGROUP_SIZE),
-      );
-      computePass.end();
+      for (let substep = 0; substep < computeSubsteps; substep += 1) {
+        const computePass = encoder.beginComputePass({
+          label: `particle update pass ${substep + 1}/${computeSubsteps}`,
+        });
+        computePass.setPipeline(this.computePipeline);
+        computePass.setBindGroup(0, this.computeBindGroup);
+        computePass.dispatchWorkgroups(
+          Math.ceil(renderCount / WORKGROUP_SIZE),
+        );
+        computePass.end();
 
-      const reactionPass = encoder.beginComputePass({
-        label: "particle reaction pass",
-      });
-      reactionPass.setPipeline(this.reactionPipeline);
-      reactionPass.setBindGroup(0, this.reactionBindGroup);
-      reactionPass.dispatchWorkgroups(
-        Math.ceil(renderCount / WORKGROUP_SIZE),
-      );
-      reactionPass.end();
+        const reactionPass = encoder.beginComputePass({
+          label: `particle reaction pass ${substep + 1}/${computeSubsteps}`,
+        });
+        reactionPass.setPipeline(this.reactionPipeline);
+        reactionPass.setBindGroup(0, this.reactionBindGroup);
+        reactionPass.dispatchWorkgroups(
+          Math.ceil(renderCount / WORKGROUP_SIZE),
+        );
+        reactionPass.end();
+      }
     }
 
     const readTrailIndex = this.trailReadIndex;
@@ -1018,13 +1026,23 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       this.performanceState[0] > 0.5
         ? this.canvas.clientWidth <= 720
           ? PERFORMANCE_PARTICLES_MOBILE
-          : PERFORMANCE_PARTICLES_DESKTOP
+          : this.canvas.clientWidth < 1000
+            ? PERFORMANCE_PARTICLES_COMPACT
+            : PERFORMANCE_PARTICLES_DESKTOP
         : 0;
 
     return Math.min(
       this.activeBudget,
       Math.max(this.activeCount, performanceFloor),
     );
+  }
+
+  private computeSubsteps(): number {
+    if (this.performanceState[0] < 0.5) {
+      return 1;
+    }
+
+    return this.canvas.clientWidth <= 720 ? 1 : 2;
   }
 
   private captureSignature(seed: WordSeed): void {

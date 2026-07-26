@@ -113,7 +113,7 @@ export const performanceMovements: readonly PerformanceMovement[] = [
     startMs: 114_000,
     endMs: 148_000,
     mode: "fungus",
-    background: "paper",
+    background: "dark",
     bpm: 62,
     rootFrequency: 49,
     intensity: [0.72, 0.4],
@@ -191,14 +191,28 @@ export class AutoPerformanceConductor {
     return this.running;
   }
 
-  start(): void {
+  start(elapsedMs = 0): void {
     if (this.running) {
       return;
     }
 
+    const offset = clamp(
+      elapsedMs,
+      0,
+      AUTO_PERFORMANCE_DURATION_MS - 1,
+    );
     this.running = true;
-    this.startedAt = performance.now();
-    this.eventIndex = 0;
+    this.startedAt = performance.now() - offset;
+    this.eventIndex = Math.max(
+      0,
+      performanceEvents.findIndex(
+        (event) => event.atMs >= Math.max(0, offset - 1200),
+      ),
+    );
+
+    if (this.eventIndex === 0 && performanceEvents[0].atMs < offset - 1200) {
+      this.eventIndex = performanceEvents.length;
+    }
     this.activeMovementIndex = -1;
     this.hooks.onStart();
     this.tick(this.startedAt);

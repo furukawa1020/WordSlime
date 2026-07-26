@@ -434,7 +434,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     onStop: restoreAutoPerformance,
   });
 
-  const startAutoPerformance = async () => {
+  const startAutoPerformance = async (startAtMs = 0) => {
     if (conductor.isRunning || autoPerformanceStarting) {
       return;
     }
@@ -470,7 +470,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
     }
 
     autoPerformanceStarting = false;
-    conductor.start();
+    conductor.start(startAtMs);
   };
 
   const handleAutoPerformanceToggle = () => {
@@ -495,6 +495,18 @@ export function createApp(root: HTMLElement): WordSlimeApp {
 
     return false;
   };
+  const performanceDebugWindow = window as Window & {
+    __wordSlimeStartPerformanceAt?: (elapsedMs: number) => void;
+  };
+
+  if (import.meta.env.DEV) {
+    performanceDebugWindow.__wordSlimeStartPerformanceAt = (elapsedMs) => {
+      stopAutoPerformance();
+      void startAutoPerformance(
+        clamp(elapsedMs, 0, AUTO_PERFORMANCE_DURATION_MS - 1),
+      );
+    };
+  }
 
   const handleSeedHistoryClick = (event: MouseEvent) => {
     const button = (event.target as Element | null)?.closest<HTMLButtonElement>(
@@ -556,6 +568,7 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       actionCleanup();
       performanceCleanup();
       conductor.stop(false);
+      delete performanceDebugWindow.__wordSlimeStartPerformanceAt;
       autoPerformanceButton.removeEventListener(
         "click",
         handleAutoPerformanceToggle,
@@ -1058,13 +1071,13 @@ function updateHud(
   const budget = stats ? `${stats.activeBudget.toLocaleString()}` : "pending";
   const capacity = stats ? `${stats.capacity.toLocaleString()}` : "pending";
   const passCount = stats?.passCount ?? 3;
-  const pipelineCount = stats?.pipelineCount ?? 11;
+  const pipelineCount = stats?.pipelineCount ?? 12;
   const uniformBytes = stats ? formatBytes(stats.uniformBufferBytes) : "pending";
   const projectionLine =
     stats && stats.pipelineCount >= 9 ? "proj: 3d/4d wgsl<br />" : "";
   const performanceLine =
     stats && stats.performanceActive > 0.5
-      ? `auto: ${formatPerformanceTime(stats.performanceProgress * AUTO_PERFORMANCE_DURATION_MS)} / 03:00 · ${Math.round(stats.performanceIntensity * 100)}%<br />vol: 48-step raymarch<br />`
+      ? `auto: ${formatPerformanceTime(stats.performanceProgress * AUTO_PERFORMANCE_DURATION_MS)} / 03:00 · ${Math.round(stats.performanceIntensity * 100)}%<br />world: 64-sdf + 48-vol<br />`
       : "";
   const signatureLine = latest
     ? `sig: ${formatByte(latest.genome.energy)} ${formatByte(latest.genome.viscosity)} ${formatByte(latest.genome.turbulence)} ${formatByte(latest.genome.fertility)}<br />`

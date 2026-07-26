@@ -400,6 +400,25 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let vignette = smoothstep(0.92, 0.2, length(centered));
   alpha *= vignette;
   color *= vignette;
+  var stage_visibility = 1.0;
+
+  if (performance_active > 0.5) {
+    if (performance_movement < 0.5) {
+      stage_visibility = 0.12;
+    } else if (performance_movement < 1.5) {
+      stage_visibility = 0.3;
+    } else if (performance_movement < 2.5) {
+      stage_visibility = 0.08;
+    } else if (performance_movement < 3.5) {
+      stage_visibility = 0.1;
+    } else if (performance_movement < 4.5) {
+      stage_visibility = 0.14;
+    } else {
+      stage_visibility = 0.06;
+    }
+  }
+  alpha *= stage_visibility;
+  color *= stage_visibility;
 
   return vec4f(color, clamp(alpha, 0.0, 0.82));
 }

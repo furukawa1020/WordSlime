@@ -45,8 +45,12 @@ fn volume_palette(movement: f32, depth: f32, phase: f32) -> vec3f {
     );
   }
 
-  if (movement < 4.5) {
+  if (movement < 3.5) {
     return mix(electric, cold, phase * 0.26);
+  }
+
+  if (movement < 4.5) {
+    return mix(spore, cold, phase * 0.2);
   }
 
   return mix(spore, cold, phase * 0.22);

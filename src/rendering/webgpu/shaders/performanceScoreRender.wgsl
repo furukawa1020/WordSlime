@@ -45,7 +45,11 @@ fn palette(movement: f32, amount: f32) -> vec3f {
   }
 
   if (movement < 4.5) {
-    return mix(cold, hot, smoothstep(1.0, 4.0, movement));
+    if (movement > 3.5) {
+      return organic;
+    }
+
+    return mix(cold, hot, smoothstep(1.0, 3.0, movement));
   }
 
   return organic;
@@ -85,6 +89,40 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
 
   var score = 0.0;
   var score_color = vec3f(0.0);
+  var orbit_weight = 0.18;
+  var playhead_weight = 0.16;
+  var ledger_weight = 0.12;
+  var cell_weight = 0.1;
+  var ribbon_weight = 0.1;
+  var radial_weight = 0.12;
+
+  if (movement < 0.5) {
+    orbit_weight = 0.74;
+    radial_weight = 0.42;
+    cell_weight = 0.04;
+  } else if (movement < 1.5) {
+    ribbon_weight = 0.78;
+    playhead_weight = 0.32;
+    orbit_weight = 0.08;
+  } else if (movement < 2.5) {
+    cell_weight = 0.82;
+    ledger_weight = 0.52;
+    orbit_weight = 0.04;
+  } else if (movement < 3.5) {
+    ribbon_weight = 0.72;
+    ledger_weight = 0.62;
+    cell_weight = 0.46;
+    radial_weight = 0.34;
+  } else if (movement < 4.5) {
+    radial_weight = 0.82;
+    orbit_weight = 0.36;
+    ribbon_weight = 0.18;
+  } else {
+    playhead_weight = 0.64;
+    radial_weight = 0.22;
+    orbit_weight = 0.03;
+    cell_weight = 0.02;
+  }
 
   for (var index = 0; index < 12; index = index + 1) {
     let fi = f32(index);
@@ -94,8 +132,11 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     let broken =
       pow(max(0.0, sin(angle * (3.0 + movement + fi * 0.18) - time * (0.32 + intensity) + fi)), 10.0);
     let orbit = line(distance, radius, 0.0025 + intensity * 0.0025) * broken;
-    score += orbit;
-    score_color += orbit * mix(color_a, color_b, fi / 11.0);
+    score += orbit * orbit_weight;
+    score_color +=
+      orbit *
+      orbit_weight *
+      mix(color_a, color_b, fi / 11.0);
   }
 
   let time_axis = input.uv.x - progress;
@@ -116,18 +157,34 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     pow(max(0.0, sin(angle * (18.0 + movement * 5.0) + local_progress * TAU)), 18.0) *
     line(distance, 0.34 + intensity * 0.08, 0.075);
 
-  score_color += color_a * playhead * (0.28 + beat * 0.5);
-  score_color += color_b * ledger * 0.16;
-  score_color += mix(color_a, color_b, 0.5) * temporal_cells * 0.12;
-  score_color += vec3f(0.72, 1.0, 0.92) * hyper_ribbon * (0.16 + intensity * 0.22);
-  score_color += color_b * radial_ticks * (0.2 + beat * 0.34);
+  score_color +=
+    color_a *
+    playhead *
+    playhead_weight *
+    (0.28 + beat * 0.5);
+  score_color += color_b * ledger * ledger_weight * 0.28;
+  score_color +=
+    mix(color_a, color_b, 0.5) *
+    temporal_cells *
+    cell_weight *
+    0.22;
+  score_color +=
+    vec3f(0.72, 1.0, 0.92) *
+    hyper_ribbon *
+    ribbon_weight *
+    (0.24 + intensity * 0.3);
+  score_color +=
+    color_b *
+    radial_ticks *
+    radial_weight *
+    (0.26 + beat * 0.42);
   let alpha = clamp(
     score * (0.025 + intensity * 0.035) +
-      playhead * 0.24 +
-      ledger * 0.08 +
-      temporal_cells * 0.09 +
-      hyper_ribbon * 0.18 +
-      radial_ticks * 0.2,
+      playhead * playhead_weight * 0.34 +
+      ledger * ledger_weight * 0.16 +
+      temporal_cells * cell_weight * 0.16 +
+      hyper_ribbon * ribbon_weight * 0.26 +
+      radial_ticks * radial_weight * 0.3,
     0.0,
     0.58
   );

@@ -309,7 +309,52 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
     flow += four_d_force *
       (26.0 + performance_intensity * 92.0);
 
-    if (performance_movement > 2.5 && performance_movement < 4.5) {
+    if (performance_movement < 0.5) {
+      let root_lane =
+        sin(
+          particle.position.x * 0.018 +
+          time * 0.7 +
+          f32(index % 17u)
+        );
+      let spore_gate = pow(
+        max(0.0, sin(time * 1.4 + f32(index) * 0.013)),
+        12.0
+      );
+      flow += vec2f(
+        root_lane * (42.0 + performance_intensity * 78.0),
+        -86.0 - performance_intensity * 124.0 +
+          spore_gate * 260.0
+      );
+    } else if (performance_movement < 1.5) {
+      let liquid_tangent = vec2f(-performance_dir.y, performance_dir.x);
+      let liquid_breath = sin(
+        time * 1.8 -
+        performance_dist * 0.018
+      );
+      flow += liquid_tangent *
+        (84.0 + performance_intensity * 188.0);
+      flow += performance_dir * liquid_breath *
+        (52.0 + performance_intensity * 146.0);
+    } else if (performance_movement < 2.5) {
+      let flock_id = f32(index % 3u);
+      let flock_center = vec2f(
+        size.x * (
+          0.5 +
+          sin(time * (0.8 + flock_id * 0.17) + flock_id * 2.094) * 0.3
+        ),
+        size.y * (
+          0.5 +
+          cos(time * (0.7 + flock_id * 0.13) + flock_id * 2.094) * 0.28
+        )
+      );
+      let to_flock = flock_center - particle.position;
+      let flock_distance = max(length(to_flock), 1.0);
+      flow += to_flock / flock_distance *
+        (130.0 + performance_intensity * 260.0);
+      flow += vec2f(-to_flock.y, to_flock.x) / flock_distance *
+        sin(time * 4.0 + f32(index) * 0.09) *
+        (90.0 + performance_intensity * 220.0);
+    } else if (performance_movement < 3.5) {
       let score_cell = vec2f(
         floor(particle.position.x / 68.0) * 68.0 + 34.0,
         floor(particle.position.y / 68.0) * 68.0 + 34.0
@@ -321,6 +366,38 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
       );
       flow += score_snap * (1.4 + performance_intensity * 4.6);
       flow += axis * score_gate * (110.0 + performance_intensity * 360.0);
+    } else if (performance_movement < 4.5) {
+      let root_origin = vec2f(size.x * 0.5, size.y * 0.88);
+      let from_root = particle.position - root_origin;
+      let root_distance = max(length(from_root), 1.0);
+      let root_direction = from_root / root_distance;
+      let branch_angle = sin(
+        root_distance * 0.025 -
+        time * 0.6 +
+        f32(index % 11u)
+      );
+      flow += root_direction *
+        (72.0 + performance_intensity * 164.0);
+      flow += vec2f(-root_direction.y, root_direction.x) *
+        branch_angle *
+        (110.0 + performance_intensity * 184.0);
+      flow.y -= 54.0 + performance_intensity * 92.0;
+    } else {
+      let collapse_center = vec2f(size.x * 0.5, size.y * 0.48);
+      let collapse_delta = particle.position - collapse_center;
+      let collapse_distance = max(length(collapse_delta), 1.0);
+      let collapse_direction = collapse_delta / collapse_distance;
+      let collapse_tangent = vec2f(
+        -collapse_direction.y,
+        collapse_direction.x
+      );
+      let horizon = 1.0 - smoothstep(40.0, 760.0, collapse_distance);
+      flow -= collapse_direction * horizon *
+        (180.0 + performance_intensity * 380.0);
+      flow += collapse_tangent * horizon *
+        (120.0 + performance_intensity * 260.0);
+      flow += collapse_direction * score_gate *
+        (220.0 + performance_intensity * 520.0);
     }
   }
 

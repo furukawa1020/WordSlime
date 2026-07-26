@@ -6,6 +6,7 @@ import hyperProjectionRenderShader from "./shaders/hyperProjectionRender.wgsl?ra
 import modeSignatureRenderShader from "./shaders/modeSignatureRender.wgsl?raw";
 import performanceScoreRenderShader from "./shaders/performanceScoreRender.wgsl?raw";
 import performanceVolumeRenderShader from "./shaders/performanceVolumeRender.wgsl?raw";
+import performanceWorldRenderShader from "./shaders/performanceWorldRender.wgsl?raw";
 import particleHaloRenderShader from "./shaders/particleHaloRender.wgsl?raw";
 import particleReactionShader from "./shaders/particleReaction.wgsl?raw";
 import particleRenderShader from "./shaders/particleRender.wgsl?raw";
@@ -133,6 +134,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly modeSignaturePipeline: GPURenderPipeline;
   private readonly performanceScorePipeline: GPURenderPipeline;
   private readonly performanceVolumePipeline: GPURenderPipeline;
+  private readonly performanceWorldPipeline: GPURenderPipeline;
   private readonly trailFeedbackPipeline: GPURenderPipeline;
   private readonly trailCompositePipeline: GPURenderPipeline;
   private readonly haloPipeline: GPURenderPipeline;
@@ -144,6 +146,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly modeSignatureBindGroup: GPUBindGroup;
   private readonly performanceScoreBindGroup: GPUBindGroup;
   private readonly performanceVolumeBindGroup: GPUBindGroup;
+  private readonly performanceWorldBindGroup: GPUBindGroup;
   private readonly haloBindGroup: GPUBindGroup;
   private readonly renderBindGroup: GPUBindGroup;
   private trailTextures: GPUTexture[] = [];
@@ -217,6 +220,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     const performanceVolumeModule = gpu.device.createShaderModule({
       label: "auto performance volume raymarch shader",
       code: performanceVolumeRenderShader,
+    });
+    const performanceWorldModule = gpu.device.createShaderModule({
+      label: "auto performance world sdf shader",
+      code: performanceWorldRenderShader,
     });
     const haloModule = gpu.device.createShaderModule({
       label: "particle halo shader",
@@ -412,6 +419,38 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         topology: "triangle-list",
       },
     });
+    this.performanceWorldPipeline = gpu.device.createRenderPipeline({
+      label: "auto performance world sdf pipeline",
+      layout: "auto",
+      vertex: {
+        module: performanceWorldModule,
+        entryPoint: "vs_main",
+      },
+      fragment: {
+        module: performanceWorldModule,
+        entryPoint: "fs_main",
+        targets: [
+          {
+            format: gpu.format,
+            blend: {
+              color: {
+                srcFactor: "src-alpha",
+                dstFactor: "one-minus-src-alpha",
+                operation: "add",
+              },
+              alpha: {
+                srcFactor: "one",
+                dstFactor: "one-minus-src-alpha",
+                operation: "add",
+              },
+            },
+          },
+        ],
+      },
+      primitive: {
+        topology: "triangle-list",
+      },
+    });
     this.trailFeedbackPipeline = gpu.device.createRenderPipeline({
       label: "trail feedback pipeline",
       layout: "auto",
@@ -576,6 +615,13 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         { binding: 0, resource: { buffer: this.paramsBuffer } },
       ],
     });
+    this.performanceWorldBindGroup = gpu.device.createBindGroup({
+      label: "auto performance world sdf bind group",
+      layout: this.performanceWorldPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.paramsBuffer } },
+      ],
+    });
     this.haloBindGroup = gpu.device.createBindGroup({
       label: "particle halo bind group",
       layout: this.haloPipeline.getBindGroupLayout(0),
@@ -694,7 +740,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       draftStrength: this.draftStrength,
       particleBufferBytes: this.particles.byteLength,
       passCount: 4,
-      pipelineCount: 11,
+      pipelineCount: 12,
       performanceActive: this.performanceState[0],
       performanceIntensity: this.performanceState[2],
       performanceProgress: this.performanceState[1],
@@ -906,6 +952,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
 
     renderPass.setPipeline(this.performanceVolumePipeline);
     renderPass.setBindGroup(0, this.performanceVolumeBindGroup);
+    renderPass.draw(3);
+
+    renderPass.setPipeline(this.performanceWorldPipeline);
+    renderPass.setBindGroup(0, this.performanceWorldBindGroup);
     renderPass.draw(3);
 
     renderPass.setPipeline(this.hyperProjectionPipeline);

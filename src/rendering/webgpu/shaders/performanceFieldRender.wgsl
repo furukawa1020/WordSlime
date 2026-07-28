@@ -90,9 +90,9 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
 @fragment
 fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let performance = params.performance;
-  let active = performance.x;
+  let performance_enabled = performance.x;
 
-  if (active < 0.5) {
+  if (performance_enabled < 0.5) {
     return vec4f(0.0);
   }
 

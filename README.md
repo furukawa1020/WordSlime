@@ -9,6 +9,7 @@ It transforms textual features such as length, repetition, punctuation, and rhyt
 ## Features
 
 - WebGPU compute particle simulation with WGSL
+- GPU reaction-diffusion field coupled to particle motion and compositing
 - Volumetric 3D slime and rotating 4D projection
 - Procedural Web Audio
 - Text-to-physics mapping
@@ -55,6 +56,7 @@ npm run build
 
 ## Controls
 
+- `▶`: run the three-minute WebGPU performance (up to 120,000 particles)
 - `Enter`: summon a word (`Shift + Enter` inserts a line break)
 - `Space`: pause or resume
 - `1` to `5`: switch behavior

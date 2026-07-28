@@ -88,14 +88,17 @@ export function createApp(root: HTMLElement): WordSlimeApp {
       densityScale;
     const performanceFloor =
       canvas.clientWidth <= 720
-        ? 48_000
+        ? 32_000
         : canvas.clientWidth < 1000
-          ? 96_000
+          ? 80_000
           : 120_000;
+    const safePerformanceFloor = state.performance.degraded
+      ? Math.floor(performanceFloor * 0.68)
+      : performanceFloor;
 
     renderer?.setParticleBudget(
       latestPerformanceFrame
-        ? Math.max(normalBudget, performanceFloor)
+        ? Math.max(normalBudget, safePerformanceFloor)
         : normalBudget,
     );
   };
@@ -638,7 +641,7 @@ function renderApp(): string {
         </section>
 
         <div class="controls" aria-label="水槽操作">
-          <button class="icon-button performance-toggle" type="button" title="3分自動演奏を再生" aria-label="3分自動演奏を再生" aria-pressed="false">▶</button>
+          <button class="icon-button performance-toggle" type="button" title="WebGPU 3分自動演奏を再生" aria-label="WebGPU 3分自動演奏を再生" aria-pressed="false">▶</button>
           <button class="icon-button settings-toggle" type="button" title="設定" aria-label="設定" aria-expanded="false" aria-controls="settings-panel">⚙</button>
           <button class="icon-button audio-toggle" type="button" title="音をオン" aria-label="音をオン" aria-pressed="false">♪</button>
         </div>
@@ -701,6 +704,7 @@ function renderApp(): string {
             <h2 id="about-title">WordSlime</h2>
             <p>ことばが溶けて、勝手に生きものになる。</p>
             <p>入力された言葉は外部に送信されません。WordSlime はブラウザ内で完結します。</p>
+            <p>▶ は、GPU上の反応拡散場と最大12万粒子を結合する3分間のWebGPU演奏です。</p>
             <button class="text-button about-close" type="button">Close</button>
           </div>
         </section>
@@ -1094,14 +1098,18 @@ function updateHud(
   const renderParticles = stats?.renderCount ?? seedParticles;
   const workgroups = stats?.computeWorkgroups ?? Math.ceil(renderParticles / 64);
   const gpuBytes =
-    stats ? stats.particleBufferBytes + stats.trailTextureBytes : renderParticles * 48;
+    stats
+      ? stats.particleBufferBytes +
+        stats.trailTextureBytes +
+        stats.performanceFieldBufferBytes
+      : renderParticles * 48;
   const canvasSize = stats
     ? `${stats.canvasWidth}x${stats.canvasHeight}`
     : "pending";
   const budget = stats ? `${stats.activeBudget.toLocaleString()}` : "pending";
   const capacity = stats ? `${stats.capacity.toLocaleString()}` : "pending";
-  const passCount = stats?.passCount ?? 3;
-  const pipelineCount = stats?.pipelineCount ?? 12;
+  const passCount = stats?.passCount ?? 4;
+  const pipelineCount = stats?.pipelineCount ?? 14;
   const uniformBytes = stats ? formatBytes(stats.uniformBufferBytes) : "pending";
   const projectionLine =
     stats && stats.pipelineCount >= 9 ? "proj: 3d/4d wgsl<br />" : "";
@@ -1111,7 +1119,7 @@ function updateHud(
       : "80-sdf + 56-vol";
   const performanceLine =
     stats && stats.performanceActive > 0.5
-      ? `auto: ${formatPerformanceTime(stats.performanceProgress * AUTO_PERFORMANCE_DURATION_MS)} / 03:00 / ${Math.round(stats.performanceIntensity * 100)}%<br />world: ${raymarchLine} / 24 shots<br />sim: ${stats.computeSubsteps}x compute<br />`
+      ? `auto: ${formatPerformanceTime(stats.performanceProgress * AUTO_PERFORMANCE_DURATION_MS)} / 03:00 / ${Math.round(stats.performanceIntensity * 100)}%<br />world: ${raymarchLine} / 24 shots<br />rd: ${stats.performanceFieldCells.toLocaleString()} cells / ${stats.performanceFieldSubsteps}x ping-pong<br />sim: field → ${stats.computeSubsteps}x particles → composite<br />`
       : "";
   const signatureLine = latest
     ? `sig: ${formatByte(latest.genome.energy)} ${formatByte(latest.genome.viscosity)} ${formatByte(latest.genome.turbulence)} ${formatByte(latest.genome.fertility)}<br />`
@@ -1206,7 +1214,9 @@ function updatePerformanceToggle(
   running: boolean,
   progress: number,
 ): void {
-  const label = running ? "3分自動演奏を停止" : "3分自動演奏を再生";
+  const label = running
+    ? "WebGPU 3分自動演奏を停止"
+    : "WebGPU 3分自動演奏を再生";
   button.textContent = running ? "■" : "▶";
   button.title = label;
   button.setAttribute("aria-label", label);
@@ -1296,7 +1306,6 @@ function startPerformanceMonitor(options: PerformanceMonitorOptions): () => void
 
       if (
         !options.state.isPaused &&
-        !options.isAutoPerformance() &&
         fps > 0 &&
         fps < 26
       ) {
@@ -1329,6 +1338,11 @@ function degradeQuality(
   const index = qualityOrder.indexOf(current);
 
   if (index <= 0) {
+    if (options.isAutoPerformance() && !options.state.performance.degraded) {
+      options.state.performance.degraded = true;
+      options.onQualityChange();
+      options.onToast("GPU load reduced for this device", 1700);
+    }
     return;
   }
 

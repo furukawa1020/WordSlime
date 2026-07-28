@@ -4,6 +4,8 @@ import { configureCanvas, createWebGpuDevice, type WebGpuDevice } from "./device
 import backgroundRenderShader from "./shaders/backgroundRender.wgsl?raw";
 import hyperProjectionRenderShader from "./shaders/hyperProjectionRender.wgsl?raw";
 import modeSignatureRenderShader from "./shaders/modeSignatureRender.wgsl?raw";
+import performanceFieldRenderShader from "./shaders/performanceFieldRender.wgsl?raw";
+import performanceFieldUpdateShader from "./shaders/performanceFieldUpdate.wgsl?raw";
 import performanceScoreRenderShader from "./shaders/performanceScoreRender.wgsl?raw";
 import performanceVolumeRenderShader from "./shaders/performanceVolumeRender.wgsl?raw";
 import performanceWorldRenderShader from "./shaders/performanceWorldRender.wgsl?raw";
@@ -75,6 +77,9 @@ export type ParticleRendererStats = {
   particleBufferBytes: number;
   passCount: number;
   pipelineCount: number;
+  performanceFieldBufferBytes: number;
+  performanceFieldCells: number;
+  performanceFieldSubsteps: number;
   performanceActive: number;
   performanceIntensity: number;
   performanceProgress: number;
@@ -91,11 +96,21 @@ export type ParticleRendererStats = {
 
 const PARTICLE_STRIDE_FLOATS = 12;
 const PARTICLE_STRIDE_BYTES = PARTICLE_STRIDE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
-const PARAM_FLOATS = 36;
+const PARAM_FLOATS = 40;
 const WORKGROUP_SIZE = 64;
+const PERFORMANCE_FIELD_WIDTH = 256;
+const PERFORMANCE_FIELD_HEIGHT = 144;
+const PERFORMANCE_FIELD_WORKGROUP_SIZE = 8;
+const PERFORMANCE_FIELD_FLOATS_PER_CELL = 4;
+const PERFORMANCE_FIELD_CELLS =
+  PERFORMANCE_FIELD_WIDTH * PERFORMANCE_FIELD_HEIGHT;
+const PERFORMANCE_FIELD_BUFFER_BYTES =
+  PERFORMANCE_FIELD_CELLS *
+  PERFORMANCE_FIELD_FLOATS_PER_CELL *
+  Float32Array.BYTES_PER_ELEMENT;
 const PERFORMANCE_PARTICLES_DESKTOP = 120000;
-const PERFORMANCE_PARTICLES_COMPACT = 96000;
-const PERFORMANCE_PARTICLES_MOBILE = 48000;
+const PERFORMANCE_PARTICLES_COMPACT = 80000;
+const PERFORMANCE_PARTICLES_MOBILE = 32000;
 const TAU = Math.PI * 2;
 
 const modeValues: Record<SimulationMode, number> = {
@@ -128,12 +143,15 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   );
   private readonly particleBuffer: GPUBuffer;
   private readonly paramsBuffer: GPUBuffer;
+  private readonly performanceFieldBuffers: [GPUBuffer, GPUBuffer];
   private readonly trailSampler: GPUSampler;
   private readonly computePipeline: GPUComputePipeline;
   private readonly reactionPipeline: GPUComputePipeline;
+  private readonly performanceFieldUpdatePipeline: GPUComputePipeline;
   private readonly backgroundPipeline: GPURenderPipeline;
   private readonly hyperProjectionPipeline: GPURenderPipeline;
   private readonly modeSignaturePipeline: GPURenderPipeline;
+  private readonly performanceFieldRenderPipeline: GPURenderPipeline;
   private readonly performanceScorePipeline: GPURenderPipeline;
   private readonly performanceVolumePipeline: GPURenderPipeline;
   private readonly performanceWorldPipeline: GPURenderPipeline;
@@ -141,14 +159,16 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private readonly trailCompositePipeline: GPURenderPipeline;
   private readonly haloPipeline: GPURenderPipeline;
   private readonly renderPipeline: GPURenderPipeline;
-  private readonly computeBindGroup: GPUBindGroup;
+  private readonly computeBindGroups: [GPUBindGroup, GPUBindGroup];
   private readonly reactionBindGroup: GPUBindGroup;
+  private readonly performanceFieldUpdateBindGroups: [GPUBindGroup, GPUBindGroup];
   private readonly backgroundBindGroup: GPUBindGroup;
   private readonly hyperProjectionBindGroup: GPUBindGroup;
   private readonly modeSignatureBindGroup: GPUBindGroup;
+  private readonly performanceFieldRenderBindGroups: [GPUBindGroup, GPUBindGroup];
   private readonly performanceScoreBindGroup: GPUBindGroup;
-  private readonly performanceVolumeBindGroup: GPUBindGroup;
-  private readonly performanceWorldBindGroup: GPUBindGroup;
+  private readonly performanceVolumeBindGroups: [GPUBindGroup, GPUBindGroup];
+  private readonly performanceWorldBindGroups: [GPUBindGroup, GPUBindGroup];
   private readonly haloBindGroup: GPUBindGroup;
   private readonly renderBindGroup: GPUBindGroup;
   private trailTextures: GPUTexture[] = [];
@@ -182,6 +202,8 @@ class WebGpuParticleRenderer implements ParticleRenderer {
   private lastTime = performance.now();
   private lastSceneTime = 0;
   private readonly startedAt = performance.now();
+  private performanceFieldReadIndex = 0;
+  private performanceFieldStepCount = 0;
   private trailReadIndex = 0;
   private trailNeedsClear = true;
   private signatureAge = 999;
@@ -202,6 +224,14 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     const reactionModule = gpu.device.createShaderModule({
       label: "particle reaction shader",
       code: particleReactionShader,
+    });
+    const performanceFieldUpdateModule = gpu.device.createShaderModule({
+      label: "performance reaction diffusion field update shader",
+      code: performanceFieldUpdateShader,
+    });
+    const performanceFieldRenderModule = gpu.device.createShaderModule({
+      label: "performance reaction diffusion field render shader",
+      code: performanceFieldRenderShader,
     });
     const backgroundModule = gpu.device.createShaderModule({
       label: "background flow shader",
@@ -254,6 +284,13 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       size: PARAM_FLOATS * Float32Array.BYTES_PER_ELEMENT,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+    this.performanceFieldBuffers = [0, 1].map((index) =>
+      gpu.device.createBuffer({
+        label: `performance reaction diffusion field ${index}`,
+        size: PERFORMANCE_FIELD_BUFFER_BYTES,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      }),
+    ) as [GPUBuffer, GPUBuffer];
     this.trailSampler = gpu.device.createSampler({
       label: "trail sampler",
       addressModeU: "clamp-to-edge",
@@ -274,6 +311,14 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       layout: "auto",
       compute: {
         module: reactionModule,
+        entryPoint: "main",
+      },
+    });
+    this.performanceFieldUpdatePipeline = gpu.device.createComputePipeline({
+      label: "performance reaction diffusion field update pipeline",
+      layout: "auto",
+      compute: {
+        module: performanceFieldUpdateModule,
         entryPoint: "main",
       },
     });
@@ -334,6 +379,38 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       },
       fragment: {
         module: modeSignatureModule,
+        entryPoint: "fs_main",
+        targets: [
+          {
+            format: gpu.format,
+            blend: {
+              color: {
+                srcFactor: "src-alpha",
+                dstFactor: "one-minus-src-alpha",
+                operation: "add",
+              },
+              alpha: {
+                srcFactor: "one",
+                dstFactor: "one-minus-src-alpha",
+                operation: "add",
+              },
+            },
+          },
+        ],
+      },
+      primitive: {
+        topology: "triangle-list",
+      },
+    });
+    this.performanceFieldRenderPipeline = gpu.device.createRenderPipeline({
+      label: "performance reaction diffusion field render pipeline",
+      layout: "auto",
+      vertex: {
+        module: performanceFieldRenderModule,
+        entryPoint: "vs_main",
+      },
+      fragment: {
+        module: performanceFieldRenderModule,
         entryPoint: "fs_main",
         targets: [
           {
@@ -566,14 +643,18 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       },
     });
 
-    this.computeBindGroup = gpu.device.createBindGroup({
-      label: "particle update bind group",
-      layout: this.computePipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.particleBuffer } },
-        { binding: 1, resource: { buffer: this.paramsBuffer } },
-      ],
-    });
+    this.computeBindGroups = this.performanceFieldBuffers.map(
+      (performanceFieldBuffer, index) =>
+        gpu.device.createBindGroup({
+          label: `particle update bind group with performance field ${index}`,
+          layout: this.computePipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: this.particleBuffer } },
+            { binding: 1, resource: { buffer: this.paramsBuffer } },
+            { binding: 2, resource: { buffer: performanceFieldBuffer } },
+          ],
+        }),
+    ) as [GPUBindGroup, GPUBindGroup];
     this.reactionBindGroup = gpu.device.createBindGroup({
       label: "particle reaction bind group",
       layout: this.reactionPipeline.getBindGroupLayout(0),
@@ -582,6 +663,23 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         { binding: 1, resource: { buffer: this.paramsBuffer } },
       ],
     });
+    this.performanceFieldUpdateBindGroups = this.performanceFieldBuffers.map(
+      (sourceBuffer, index) =>
+        gpu.device.createBindGroup({
+          label: `performance reaction diffusion update bind group ${index}`,
+          layout: this.performanceFieldUpdatePipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: sourceBuffer } },
+            {
+              binding: 1,
+              resource: {
+                buffer: this.performanceFieldBuffers[1 - index],
+              },
+            },
+            { binding: 2, resource: { buffer: this.paramsBuffer } },
+          ],
+        }),
+    ) as [GPUBindGroup, GPUBindGroup];
     this.backgroundBindGroup = gpu.device.createBindGroup({
       label: "background flow bind group",
       layout: this.backgroundPipeline.getBindGroupLayout(0),
@@ -603,6 +701,17 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         { binding: 0, resource: { buffer: this.paramsBuffer } },
       ],
     });
+    this.performanceFieldRenderBindGroups = this.performanceFieldBuffers.map(
+      (performanceFieldBuffer, index) =>
+        gpu.device.createBindGroup({
+          label: `performance reaction diffusion render bind group ${index}`,
+          layout: this.performanceFieldRenderPipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: performanceFieldBuffer } },
+            { binding: 1, resource: { buffer: this.paramsBuffer } },
+          ],
+        }),
+    ) as [GPUBindGroup, GPUBindGroup];
     this.performanceScoreBindGroup = gpu.device.createBindGroup({
       label: "auto performance score bind group",
       layout: this.performanceScorePipeline.getBindGroupLayout(0),
@@ -610,20 +719,28 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         { binding: 0, resource: { buffer: this.paramsBuffer } },
       ],
     });
-    this.performanceVolumeBindGroup = gpu.device.createBindGroup({
-      label: "auto performance volume raymarch bind group",
-      layout: this.performanceVolumePipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.paramsBuffer } },
-      ],
-    });
-    this.performanceWorldBindGroup = gpu.device.createBindGroup({
-      label: "auto performance world sdf bind group",
-      layout: this.performanceWorldPipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.paramsBuffer } },
-      ],
-    });
+    this.performanceVolumeBindGroups = this.performanceFieldBuffers.map(
+      (performanceFieldBuffer, index) =>
+        gpu.device.createBindGroup({
+          label: `auto performance volume raymarch bind group ${index}`,
+          layout: this.performanceVolumePipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: this.paramsBuffer } },
+            { binding: 1, resource: { buffer: performanceFieldBuffer } },
+          ],
+        }),
+    ) as [GPUBindGroup, GPUBindGroup];
+    this.performanceWorldBindGroups = this.performanceFieldBuffers.map(
+      (performanceFieldBuffer, index) =>
+        gpu.device.createBindGroup({
+          label: `auto performance world sdf bind group ${index}`,
+          layout: this.performanceWorldPipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: this.paramsBuffer } },
+            { binding: 1, resource: { buffer: performanceFieldBuffer } },
+          ],
+        }),
+    ) as [GPUBindGroup, GPUBindGroup];
     this.haloBindGroup = gpu.device.createBindGroup({
       label: "particle halo bind group",
       layout: this.haloPipeline.getBindGroupLayout(0),
@@ -640,6 +757,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
         { binding: 1, resource: { buffer: this.paramsBuffer } },
       ],
     });
+    this.resetPerformanceField();
     this.createTrailTargets();
 
     void gpu.lost.then((info) => {
@@ -725,12 +843,18 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.draftStrength = 0;
     this.draftHash = 0;
     this.reservoirDepth = 0;
+    this.resetPerformanceField();
     this.trailNeedsClear = true;
   }
 
   getStats(): ParticleRendererStats {
     const renderCount = this.renderCount();
     const computeSubsteps = this.computeSubsteps();
+    const performanceFieldSubsteps = this.performanceFieldSubsteps();
+    const performanceFieldWorkgroups =
+      Math.ceil(PERFORMANCE_FIELD_WIDTH / PERFORMANCE_FIELD_WORKGROUP_SIZE) *
+      Math.ceil(PERFORMANCE_FIELD_HEIGHT / PERFORMANCE_FIELD_WORKGROUP_SIZE) *
+      performanceFieldSubsteps;
 
     return {
       activeBudget: this.activeBudget,
@@ -740,12 +864,16 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       canvasWidth: this.canvas.width,
       computeSubsteps,
       computeWorkgroups:
-        Math.ceil(renderCount / WORKGROUP_SIZE) * computeSubsteps * 2,
+        Math.ceil(renderCount / WORKGROUP_SIZE) * computeSubsteps * 2 +
+        performanceFieldWorkgroups,
       draftHash: this.draftHash,
       draftStrength: this.draftStrength,
       particleBufferBytes: this.particles.byteLength,
-      passCount: computeSubsteps * 2 + 2,
-      pipelineCount: 12,
+      passCount: computeSubsteps * 2 + performanceFieldSubsteps + 2,
+      pipelineCount: 14,
+      performanceFieldBufferBytes: PERFORMANCE_FIELD_BUFFER_BYTES * 2,
+      performanceFieldCells: PERFORMANCE_FIELD_CELLS,
+      performanceFieldSubsteps,
       performanceActive: this.performanceState[0],
       performanceIntensity: this.performanceState[2],
       performanceProgress: this.performanceState[1],
@@ -798,6 +926,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     if (!performanceState?.active) {
       this.performanceState.fill(0);
       return;
+    }
+
+    if (this.performanceState[0] < 0.5) {
+      this.resetPerformanceField();
     }
 
     this.performanceState[0] = 1;
@@ -869,13 +1001,37 @@ class WebGpuParticleRenderer implements ParticleRenderer {
 
   private render(dt: number, time: number): void {
     const computeSubsteps = this.computeSubsteps();
-    this.writeParams(dt / computeSubsteps, time);
+    const performanceFieldSubsteps = this.performanceFieldSubsteps();
+    this.writeParams(
+      dt / computeSubsteps,
+      time,
+      dt,
+      performanceFieldSubsteps,
+    );
 
     const encoder = this.gpu.device.createCommandEncoder({
       label: "particle frame encoder",
     });
 
     const renderCount = this.renderCount();
+    let performanceFieldIndex = this.performanceFieldReadIndex;
+
+    for (let substep = 0; substep < performanceFieldSubsteps; substep += 1) {
+      const fieldPass = encoder.beginComputePass({
+        label: `reaction diffusion field pass ${substep + 1}/${performanceFieldSubsteps}`,
+      });
+      fieldPass.setPipeline(this.performanceFieldUpdatePipeline);
+      fieldPass.setBindGroup(
+        0,
+        this.performanceFieldUpdateBindGroups[performanceFieldIndex],
+      );
+      fieldPass.dispatchWorkgroups(
+        Math.ceil(PERFORMANCE_FIELD_WIDTH / PERFORMANCE_FIELD_WORKGROUP_SIZE),
+        Math.ceil(PERFORMANCE_FIELD_HEIGHT / PERFORMANCE_FIELD_WORKGROUP_SIZE),
+      );
+      fieldPass.end();
+      performanceFieldIndex = 1 - performanceFieldIndex;
+    }
 
     if (renderCount > 0) {
       for (let substep = 0; substep < computeSubsteps; substep += 1) {
@@ -883,7 +1039,7 @@ class WebGpuParticleRenderer implements ParticleRenderer {
           label: `particle update pass ${substep + 1}/${computeSubsteps}`,
         });
         computePass.setPipeline(this.computePipeline);
-        computePass.setBindGroup(0, this.computeBindGroup);
+        computePass.setBindGroup(0, this.computeBindGroups[performanceFieldIndex]);
         computePass.dispatchWorkgroups(
           Math.ceil(renderCount / WORKGROUP_SIZE),
         );
@@ -954,33 +1110,58 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     renderPass.setBindGroup(0, this.modeSignatureBindGroup);
     renderPass.draw(3);
 
+    if (this.performanceState[0] > 0.5) {
+      renderPass.setPipeline(this.performanceFieldRenderPipeline);
+      renderPass.setBindGroup(
+        0,
+        this.performanceFieldRenderBindGroups[performanceFieldIndex],
+      );
+      renderPass.draw(3);
+    }
+
     renderPass.setPipeline(this.trailCompositePipeline);
     renderPass.setBindGroup(0, this.trailCompositeBindGroups[writeTrailIndex]);
     renderPass.draw(3);
 
-    renderPass.setPipeline(this.performanceVolumePipeline);
-    renderPass.setBindGroup(0, this.performanceVolumeBindGroup);
-    renderPass.draw(3);
+    if (this.performanceState[0] > 0.5) {
+      renderPass.setPipeline(this.performanceVolumePipeline);
+      renderPass.setBindGroup(
+        0,
+        this.performanceVolumeBindGroups[performanceFieldIndex],
+      );
+      renderPass.draw(3);
 
-    renderPass.setPipeline(this.performanceWorldPipeline);
-    renderPass.setBindGroup(0, this.performanceWorldBindGroup);
-    renderPass.draw(3);
+      renderPass.setPipeline(this.performanceWorldPipeline);
+      renderPass.setBindGroup(
+        0,
+        this.performanceWorldBindGroups[performanceFieldIndex],
+      );
+      renderPass.draw(3);
+    }
 
     renderPass.setPipeline(this.hyperProjectionPipeline);
     renderPass.setBindGroup(0, this.hyperProjectionBindGroup);
     renderPass.draw(3);
 
-    renderPass.setPipeline(this.performanceScorePipeline);
-    renderPass.setBindGroup(0, this.performanceScoreBindGroup);
-    renderPass.draw(3);
+    if (this.performanceState[0] > 0.5) {
+      renderPass.setPipeline(this.performanceScorePipeline);
+      renderPass.setBindGroup(0, this.performanceScoreBindGroup);
+      renderPass.draw(3);
+    }
 
     renderPass.end();
     this.gpu.device.queue.submit([encoder.finish()]);
+    this.performanceFieldReadIndex = performanceFieldIndex;
     this.trailReadIndex = writeTrailIndex;
     this.trailNeedsClear = false;
   }
 
-  private writeParams(dt: number, time: number): void {
+  private writeParams(
+    dt: number,
+    time: number,
+    frameDt: number,
+    performanceFieldSubsteps: number,
+  ): void {
     this.params[0] = dt;
     this.params[1] = time;
     this.params[2] = this.canvas.width;
@@ -1011,6 +1192,10 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.params[27] = this.draftHash;
     this.params.set(this.reservoir, 28);
     this.params.set(this.performanceState, 32);
+    this.params[36] = performanceFieldSubsteps;
+    this.params[37] = frameDt;
+    this.params[38] = PERFORMANCE_FIELD_WIDTH;
+    this.params[39] = PERFORMANCE_FIELD_HEIGHT;
 
     this.gpu.device.queue.writeBuffer(this.paramsBuffer, 0, this.params);
 
@@ -1043,6 +1228,48 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     }
 
     return this.canvas.clientWidth <= 720 ? 1 : 2;
+  }
+
+  private performanceFieldSubsteps(): number {
+    if (this.performanceState[0] < 0.5) {
+      this.performanceFieldStepCount = 0;
+      return 0;
+    }
+
+    if (
+      this.settings.reduceMotion ||
+      this.canvas.clientWidth <= 720 ||
+      this.activeBudget < 60_000
+    ) {
+      this.performanceFieldStepCount = 1;
+      return 1;
+    }
+
+    if (this.activeBudget < 100_000) {
+      this.performanceFieldStepCount = 2;
+      return 2;
+    }
+
+    if (this.performanceFieldStepCount === 3) {
+      this.performanceFieldStepCount =
+        this.performanceState[2] <= 0.62 ? 2 : 3;
+    } else {
+      this.performanceFieldStepCount =
+        this.performanceState[2] >= 0.78 ? 3 : 2;
+    }
+
+    return this.performanceFieldStepCount;
+  }
+
+  private resetPerformanceField(): void {
+    const initialState = createInitialPerformanceField();
+
+    for (const buffer of this.performanceFieldBuffers) {
+      this.gpu.device.queue.writeBuffer(buffer, 0, initialState);
+    }
+
+    this.performanceFieldReadIndex = 0;
+    this.performanceFieldStepCount = 0;
   }
 
   private captureSignature(seed: WordSeed): void {
@@ -1152,6 +1379,55 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     this.trailReadIndex = 0;
     this.trailNeedsClear = true;
   }
+}
+
+function createInitialPerformanceField(): Float32Array {
+  const field = new Float32Array(
+    PERFORMANCE_FIELD_CELLS * PERFORMANCE_FIELD_FLOATS_PER_CELL,
+  );
+  const sources = [
+    [0.24, 0.3, 0.052],
+    [0.5, 0.5, 0.068],
+    [0.76, 0.7, 0.054],
+    [0.72, 0.27, 0.038],
+    [0.3, 0.72, 0.043],
+  ] as const;
+
+  for (let y = 0; y < PERFORMANCE_FIELD_HEIGHT; y += 1) {
+    for (let x = 0; x < PERFORMANCE_FIELD_WIDTH; x += 1) {
+      const uvX = (x + 0.5) / PERFORMANCE_FIELD_WIDTH;
+      const uvY = (y + 0.5) / PERFORMANCE_FIELD_HEIGHT;
+      const noise = fract(
+        Math.sin((x + 1) * 12.9898 + (y + 1) * 78.233) * 43758.5453,
+      );
+      let inhibitor = 0;
+
+      for (const [sourceX, sourceY, radius] of sources) {
+        const distance = Math.hypot(uvX - sourceX, uvY - sourceY);
+        inhibitor = Math.max(
+          inhibitor,
+          clamp01((radius - distance) / Math.max(radius * 0.32, 0.001)),
+        );
+      }
+
+      const ringDistance = Math.abs(
+        Math.hypot(uvX - 0.5, uvY - 0.5) - 0.27,
+      );
+      if (ringDistance < 0.009 && noise > 0.42) {
+        inhibitor = Math.max(inhibitor, 0.74 + noise * 0.2);
+      }
+
+      const base =
+        (y * PERFORMANCE_FIELD_WIDTH + x) *
+        PERFORMANCE_FIELD_FLOATS_PER_CELL;
+      field[base] = 1 - inhibitor * 0.62;
+      field[base + 1] = inhibitor;
+      field[base + 2] = 0;
+      field[base + 3] = noise;
+    }
+  }
+
+  return field;
 }
 
 type SpawnProfile =
@@ -1537,6 +1813,10 @@ function trailScaleForBudget(activeBudget: number): number {
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
+}
+
+function fract(value: number): number {
+  return value - Math.floor(value);
 }
 
 function mix(from: number, to: number, amount: number): number {

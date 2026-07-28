@@ -16,12 +16,23 @@ struct VertexOut {
 };
 
 @group(0) @binding(0) var<uniform> params: SimParams;
+@group(0) @binding(1) var<storage, read> performance_field: array<vec4f>;
 
+const FIELD_WIDTH = 256u;
+const FIELD_HEIGHT = 144u;
 const POSITIONS = array<vec2f, 3>(
   vec2f(-1.0, -1.0),
   vec2f(3.0, -1.0),
   vec2f(-1.0, 3.0)
 );
+
+fn gpu_field_sample(uv: vec2f) -> vec4f {
+  let safe_uv = clamp(uv, vec2f(0.0), vec2f(0.9999));
+  let cell = vec2u(
+    safe_uv * vec2f(f32(FIELD_WIDTH), f32(FIELD_HEIGHT))
+  );
+  return performance_field[cell.y * FIELD_WIDTH + cell.x];
+}
 
 fn rotate2(point: vec2f, angle: f32) -> vec2f {
   let sine = sin(angle);
@@ -165,11 +176,25 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let shot_progress = fract(local_progress * 4.0);
   let stage_time = time + shot * 3.1;
   let intensity = params.performance.z;
+  let gpu_field = gpu_field_sample(input.uv);
+  let field_presence = smoothstep(
+    0.025,
+    0.42,
+    gpu_field.y + gpu_field.z * 0.72
+  );
+  let coupled_intensity = clamp(
+    intensity * (0.42 + field_presence * 0.72) + gpu_field.z * 0.22,
+    0.0,
+    1.0
+  );
   let screen = vec2f(
     (input.uv.x * 2.0 - 1.0) * aspect,
     1.0 - input.uv.y * 2.0
   );
-  let camera_orbit = time * (0.08 + intensity * 0.1) + movement * 0.34;
+  let camera_orbit =
+    time * (0.08 + coupled_intensity * 0.1) +
+    movement * 0.34 +
+    gpu_field.y * 0.18;
   var ray_origin = vec3f(
     sin(camera_orbit) * (0.16 + intensity * 0.12),
     cos(camera_orbit * 0.73) * 0.12,
@@ -210,9 +235,12 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
       position,
       stage_time + shot_progress * 2.0,
       movement,
-      intensity
+      coupled_intensity
     );
-    let step_density = field_sample.a * (0.025 + intensity * 0.026);
+    let step_density =
+      field_sample.a *
+      (0.025 + coupled_intensity * 0.026) *
+      (0.28 + field_presence * 0.92);
     let contribution = transmission * step_density;
     accumulated_color += field_sample.rgb * contribution;
     transmission *= 1.0 - step_density;
@@ -220,7 +248,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   }
 
   let volume_alpha = clamp(
-    (1.0 - transmission) * (0.38 + intensity * 0.28),
+    (1.0 - transmission) * (0.3 + coupled_intensity * 0.34),
     0.0,
     0.62
   );
@@ -231,8 +259,11 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   );
   let final_color =
     accumulated_color *
-    (0.82 + intensity * 0.54 + pulse * 0.16) *
+    (0.72 + coupled_intensity * 0.62 + pulse * 0.16) *
     vignette;
 
-  return vec4f(final_color, volume_alpha * vignette);
+  return vec4f(
+    final_color * (0.36 + field_presence * 0.8),
+    volume_alpha * vignette * (0.22 + field_presence * 0.9)
+  );
 }

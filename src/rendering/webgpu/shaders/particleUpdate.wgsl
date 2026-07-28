@@ -22,8 +22,40 @@ struct SimParams {
 
 @group(0) @binding(0) var<storage, read_write> particles: array<Particle>;
 @group(0) @binding(1) var<uniform> params: SimParams;
+@group(0) @binding(2) var<storage, read> performance_field: array<vec4f>;
 
 const TAU = 6.28318530718;
+const FIELD_WIDTH = 256u;
+const FIELD_HEIGHT = 144u;
+
+fn performance_field_index(cell: vec2i) -> u32 {
+  let width = i32(FIELD_WIDTH);
+  let height = i32(FIELD_HEIGHT);
+  let wrapped_x = (cell.x + width) % width;
+  let wrapped_y = (cell.y + height) % height;
+  return u32(wrapped_y) * FIELD_WIDTH + u32(wrapped_x);
+}
+
+fn sample_performance_field(position: vec2f, size: vec2f) -> vec3f {
+  let uv = clamp(
+    position / max(size, vec2f(1.0)),
+    vec2f(0.0),
+    vec2f(0.9999)
+  );
+  let cell = vec2i(
+    uv * vec2f(f32(FIELD_WIDTH), f32(FIELD_HEIGHT))
+  );
+  let center = performance_field[performance_field_index(cell)].y;
+  let west =
+    performance_field[performance_field_index(cell + vec2i(-1, 0))].y;
+  let east =
+    performance_field[performance_field_index(cell + vec2i(1, 0))].y;
+  let north =
+    performance_field[performance_field_index(cell + vec2i(0, -1))].y;
+  let south =
+    performance_field[performance_field_index(cell + vec2i(0, 1))].y;
+  return vec3f(center, east - west, south - north);
+}
 
 fn hash(point: vec2f) -> f32 {
   let p = fract(vec3f(point.xyx) * 0.1031);
@@ -235,6 +267,29 @@ fn main(@builtin(global_invocation_id) global_id: vec3u) {
   }
 
   if (performance_active > 0.5) {
+    let gpu_field = sample_performance_field(particle.position, size);
+    let field_gradient = gpu_field.yz;
+    let field_gradient_length = max(length(field_gradient), 0.0001);
+    let field_direction = field_gradient / field_gradient_length;
+    let field_tangent = vec2f(-field_direction.y, field_direction.x);
+    let field_membrane = smoothstep(0.035, 0.42, gpu_field.x);
+    flow -= field_gradient *
+      (820.0 + performance_intensity * 1680.0);
+    flow += field_tangent *
+      field_membrane *
+      sin(
+        gpu_field.x * TAU * 5.0 +
+        time * (0.8 + performance_intensity * 2.4) +
+        f32(index) * 0.0007
+      ) *
+      (42.0 + performance_intensity * 126.0);
+    particle.energy = clamp(
+      particle.energy +
+      field_membrane * performance_intensity * dt * 0.035,
+      0.0,
+      1.0
+    );
+
     let performance_shot = floor(performance_local * 4.0);
     let shot_progress = fract(performance_local * 4.0);
     let movement_phase =

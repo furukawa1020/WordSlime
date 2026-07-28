@@ -16,12 +16,23 @@ struct VertexOut {
 };
 
 @group(0) @binding(0) var<uniform> params: SimParams;
+@group(0) @binding(1) var<storage, read> performance_field: array<vec4f>;
 
+const FIELD_WIDTH = 256u;
+const FIELD_HEIGHT = 144u;
 const POSITIONS = array<vec2f, 3>(
   vec2f(-1.0, -1.0),
   vec2f(3.0, -1.0),
   vec2f(-1.0, 3.0)
 );
+
+fn gpu_field_sample(uv: vec2f) -> vec4f {
+  let safe_uv = clamp(uv, vec2f(0.0), vec2f(0.9999));
+  let cell = vec2u(
+    safe_uv * vec2f(f32(FIELD_WIDTH), f32(FIELD_HEIGHT))
+  );
+  return performance_field[cell.y * FIELD_WIDTH + cell.x];
+}
 
 fn rotate2(point: vec2f, angle: f32) -> vec2f {
   let sine = sin(angle);
@@ -433,8 +444,19 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let local_progress = fract(params.performance.w);
   let shot = floor(local_progress * 4.0);
   let shot_progress = fract(local_progress * 4.0);
-  let stage_time = time + shot * 4.7;
-  let intensity = params.performance.z;
+  let gpu_field = gpu_field_sample(input.uv);
+  let field_presence = smoothstep(
+    0.025,
+    0.42,
+    gpu_field.y + gpu_field.z * 0.72
+  );
+  let stage_time = time + shot * 4.7 + gpu_field.y * 0.8;
+  let intensity = clamp(
+    params.performance.z * (0.48 + field_presence * 0.68) +
+    gpu_field.z * 0.18,
+    0.0,
+    1.0
+  );
   var camera_origin = vec3f(0.0, 0.05, 3.25);
   var camera_target = vec3f(0.0);
 
@@ -608,5 +630,9 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   }
 
   let distance_fade = smoothstep(6.2, 1.2, travel);
-  return vec4f(color * distance_fade, alpha * distance_fade);
+  let field_reveal = 0.14 + field_presence * 0.96;
+  return vec4f(
+    color * distance_fade * field_reveal,
+    alpha * distance_fade * field_reveal
+  );
 }

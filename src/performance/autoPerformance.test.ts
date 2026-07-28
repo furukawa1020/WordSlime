@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   AUTO_PERFORMANCE_DURATION_MS,
+  AutoPerformanceConductor,
+  type PerformanceFrame,
   performanceEvents,
   performanceFrameAt,
   performanceMovements,
@@ -56,5 +58,29 @@ describe("auto performance timeline", () => {
       ),
     ).toBe(true);
     expect(seeds.some((event) => event.text.includes("4D"))).toBe(true);
+  });
+
+  it("applies a requested start offset to the first frame", () => {
+    vi.stubGlobal("requestAnimationFrame", () => 1);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    let firstFrame: PerformanceFrame | undefined;
+    const conductor = new AutoPerformanceConductor({
+      onStart() {},
+      onFrame(frame) {
+        firstFrame ??= frame;
+      },
+      onMovement() {},
+      onEvent() {},
+      onStop() {},
+    });
+
+    try {
+      conductor.start(82_000);
+      expect(firstFrame?.movement.id).toBe("hypercube");
+      expect(firstFrame?.elapsedMs).toBeGreaterThanOrEqual(82_000);
+    } finally {
+      conductor.stop();
+      vi.unstubAllGlobals();
+    }
   });
 });

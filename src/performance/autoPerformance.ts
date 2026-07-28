@@ -215,7 +215,7 @@ export class AutoPerformanceConductor {
     }
     this.activeMovementIndex = -1;
     this.hooks.onStart();
-    this.tick(this.startedAt);
+    this.tick(performance.now());
   }
 
   stop(completed = false): void {

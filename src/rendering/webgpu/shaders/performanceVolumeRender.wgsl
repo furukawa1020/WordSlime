@@ -223,7 +223,13 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   var accumulated_color = vec3f(0.0);
   var transmission = 1.0;
   var travel = 0.0;
-  let step_limit = select(56, 64, size.x >= 1000.0);
+  let full_step_limit = select(56, 64, size.x >= 1000.0);
+  let reduced_step_limit = select(36, 44, size.x >= 1000.0);
+  let step_limit = select(
+    reduced_step_limit,
+    full_step_limit,
+    params.behavior.z >= 100000.0
+  );
 
   for (var step_index = 0; step_index < 64; step_index = step_index + 1) {
     if (step_index >= step_limit) {

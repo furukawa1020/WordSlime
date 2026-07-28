@@ -83,6 +83,8 @@ export type ParticleRendererStats = {
   performanceActive: number;
   performanceIntensity: number;
   performanceProgress: number;
+  performanceVolumeSteps: number;
+  performanceWorldSteps: number;
   renderCount: number;
   reservoirComplexity: number;
   reservoirEnergy: number;
@@ -851,6 +853,8 @@ class WebGpuParticleRenderer implements ParticleRenderer {
     const renderCount = this.renderCount();
     const computeSubsteps = this.computeSubsteps();
     const performanceFieldSubsteps = this.performanceFieldSubsteps();
+    const fullPerformanceRaymarch = renderCount >= 100_000;
+    const wideFramebuffer = this.canvas.width >= 1000;
     const performanceFieldWorkgroups =
       Math.ceil(PERFORMANCE_FIELD_WIDTH / PERFORMANCE_FIELD_WORKGROUP_SIZE) *
       Math.ceil(PERFORMANCE_FIELD_HEIGHT / PERFORMANCE_FIELD_WORKGROUP_SIZE) *
@@ -877,6 +881,20 @@ class WebGpuParticleRenderer implements ParticleRenderer {
       performanceActive: this.performanceState[0],
       performanceIntensity: this.performanceState[2],
       performanceProgress: this.performanceState[1],
+      performanceVolumeSteps: fullPerformanceRaymarch
+        ? wideFramebuffer
+          ? 64
+          : 56
+        : wideFramebuffer
+          ? 44
+          : 36,
+      performanceWorldSteps: fullPerformanceRaymarch
+        ? wideFramebuffer
+          ? 96
+          : 80
+        : wideFramebuffer
+          ? 64
+          : 52,
       renderCount,
       reservoirComplexity: this.reservoir[3],
       reservoirEnergy: this.reservoir[0],

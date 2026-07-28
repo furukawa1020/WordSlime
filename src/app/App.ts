@@ -1114,9 +1114,9 @@ function updateHud(
   const projectionLine =
     stats && stats.pipelineCount >= 9 ? "proj: 3d/4d wgsl<br />" : "";
   const raymarchLine =
-    stats && stats.canvasWidth >= 1000
-      ? "96-sdf + 64-vol"
-      : "80-sdf + 56-vol";
+    stats
+      ? `${stats.performanceWorldSteps}-sdf + ${stats.performanceVolumeSteps}-vol`
+      : "pending";
   const performanceLine =
     stats && stats.performanceActive > 0.5
       ? `auto: ${formatPerformanceTime(stats.performanceProgress * AUTO_PERFORMANCE_DURATION_MS)} / 03:00 / ${Math.round(stats.performanceIntensity * 100)}%<br />world: ${raymarchLine} / 24 shots<br />rd: ${stats.performanceFieldCells.toLocaleString()} cells / ${stats.performanceFieldSubsteps}x ping-pong<br />sim: field → ${stats.computeSubsteps}x particles → composite<br />`
